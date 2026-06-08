@@ -206,6 +206,23 @@ function minutesToTime(value) {
   return `${hours}:${minutes}`;
 }
 
+function localTodayIso() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function currentMinutes() {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+function isPastSlot(dateString, time) {
+  return dateString === localTodayIso() && timeToMinutes(time) <= currentMinutes();
+}
+
 function slotsForDate(dateString) {
   const { open, close } = getHours(dateString);
   const start = timeToMinutes(open);
@@ -225,6 +242,10 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
 
 function isStaffAvailable(bookings, staffId, date, time, durationMinutes = 60) {
   const worker = bookableStaff.find((person) => person.id === staffId);
+
+  if (isPastSlot(date, time)) {
+    return false;
+  }
 
   if (!worker || !isStaffWorking(worker, date)) {
     return false;
@@ -288,6 +309,10 @@ function validateBooking(input) {
 
   if (!slotsForDate(input.date).includes(input.time)) {
     return "That appointment time is outside salon hours.";
+  }
+
+  if (isPastSlot(input.date, input.time)) {
+    return "That appointment time has already passed. Please choose a later time.";
   }
 
   if (input.staffId && input.staffId !== "any" && !bookableStaff.some((person) => person.id === input.staffId)) {

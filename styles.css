@@ -799,6 +799,12 @@ input[type="date"] {
   min-width: 11rem;
 }
 
+.app-page input[type="date"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
 select:focus,
 input:focus {
   outline: 2px solid rgba(157, 15, 28, 0.18);
@@ -1965,6 +1971,25 @@ textarea:focus {
   text-align: center;
 }
 
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  width: min(88rem, 100%);
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 1.35rem 5vw 2rem;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
 .footer strong {
   display: block;
   margin-bottom: 0.6rem;
@@ -2331,9 +2356,29 @@ textarea:focus {
     min-width: 0;
   }
 
+  input,
+  select,
+  textarea,
+  .search-select-menu button {
+    font-size: 16px;
+  }
+
+  .app-page input,
+  .app-page select,
+  .app-page textarea {
+    width: 100%;
+  }
+
   input[type="date"] {
     width: 100%;
     appearance: auto;
+  }
+
+  .calendar-toolbar label,
+  .calendar-toolbar select,
+  .calendar-toolbar input[type="date"] {
+    width: 100%;
+    max-width: 100%;
   }
 
   .search-select-menu {
@@ -2475,6 +2520,13 @@ textarea:focus {
   .footer > div {
     border-left: 0;
     padding-left: 0;
+  }
+
+  .app-footer {
+    display: grid;
+    gap: 0.35rem;
+    padding-inline: 4vw;
+    text-align: center;
   }
 
   .booking-form .button {
