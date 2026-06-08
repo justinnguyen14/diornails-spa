@@ -18,6 +18,12 @@
   box-sizing: border-box;
 }
 
+*,
+*::before,
+*::after {
+  min-width: 0;
+}
+
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 5.25rem;
@@ -729,6 +735,9 @@ input[list] {
 
 .search-select {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .search-select input {
@@ -753,6 +762,7 @@ input[list] {
   border-radius: 0.3rem;
   background: var(--white);
   box-shadow: 0 18px 38px rgba(93, 45, 38, 0.14);
+  max-width: 100%;
 }
 
 .search-select-menu.is-open {
@@ -920,16 +930,24 @@ textarea:focus {
   grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.36fr);
   gap: 1.2rem;
   align-items: start;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .appointment-form {
   display: grid;
   gap: 1rem;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .form-section {
   display: grid;
   gap: 1rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
   padding: clamp(1.15rem, 2vw, 1.6rem);
   border: 1px solid rgba(230, 207, 191, 0.88);
   border-radius: 0.35rem;
@@ -964,6 +982,8 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .form-section label,
@@ -972,6 +992,7 @@ textarea:focus {
   display: grid;
   gap: 0.4rem;
   min-width: 0;
+  max-width: 100%;
 }
 
 .time-slots {
@@ -1214,6 +1235,9 @@ textarea:focus {
 .staff-dashboard {
   display: grid;
   gap: 1rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .calendar-toolbar {
@@ -1225,6 +1249,9 @@ textarea:focus {
   border: 1px solid rgba(230, 207, 191, 0.88);
   border-radius: 0.35rem;
   background: rgba(255, 255, 255, 0.82);
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .segmented-control {
@@ -1246,6 +1273,8 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .calendar-summary article {
@@ -1262,9 +1291,15 @@ textarea:focus {
 
 .calendar-board {
   min-height: 16rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .calendar-day {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
   padding: 1rem;
 }
 
@@ -1285,8 +1320,12 @@ textarea:focus {
 
 .schedule-calendar {
   --minute-height: 1.25px;
-  min-width: min(76rem, 100%);
+  --calendar-pad: 1rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid rgba(230, 207, 191, 0.9);
   border-radius: 0.35rem;
   background: var(--white);
@@ -1294,6 +1333,7 @@ textarea:focus {
 
 .schedule-header {
   display: grid;
+  min-width: max-content;
   position: sticky;
   top: 0;
   z-index: 4;
@@ -1321,12 +1361,13 @@ textarea:focus {
 .schedule-body {
   display: grid;
   grid-template-columns: 5.2rem 1fr;
+  min-width: max-content;
 }
 
 .schedule-times,
 .schedule-columns {
   position: relative;
-  min-height: calc(var(--calendar-minutes) * var(--minute-height));
+  min-height: calc((var(--calendar-minutes) * var(--minute-height)) + (var(--calendar-pad) * 2));
 }
 
 .schedule-times {
@@ -1336,9 +1377,9 @@ textarea:focus {
 
 .schedule-times span {
   position: absolute;
-  top: calc(var(--time-offset) * var(--minute-height));
+  top: calc(var(--calendar-pad) + (var(--time-offset) * var(--minute-height)));
   right: 0.7rem;
-  transform: translateY(-0.5rem);
+  transform: translateY(-50%);
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 800;
@@ -1351,7 +1392,7 @@ textarea:focus {
 .schedule-column {
   position: relative;
   min-width: 12rem;
-  min-height: calc(var(--calendar-minutes) * var(--minute-height));
+  min-height: calc((var(--calendar-minutes) * var(--minute-height)) + (var(--calendar-pad) * 2));
   border-right: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(251, 240, 239, 0.22), rgba(255, 255, 255, 0));
 }
@@ -1360,7 +1401,7 @@ textarea:focus {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(var(--line-offset) * var(--minute-height));
+  top: calc(var(--calendar-pad) + (var(--line-offset) * var(--minute-height)));
   border-top: 1px solid rgba(230, 207, 191, 0.72);
 }
 
@@ -1368,7 +1409,7 @@ textarea:focus {
   position: absolute;
   left: 0.45rem;
   right: 0.45rem;
-  top: calc(var(--event-start) * var(--minute-height) + 0.2rem);
+  top: calc(var(--calendar-pad) + (var(--event-start) * var(--minute-height) + 0.2rem));
   min-height: calc(var(--event-duration) * var(--minute-height) - 0.4rem);
   display: grid;
   align-content: start;
@@ -1424,6 +1465,13 @@ textarea:focus {
   grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.32fr);
   gap: 1rem;
   align-items: start;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.staff-calendar-layout > * {
+  min-width: 0;
 }
 
 .week-detail-panel {
@@ -1431,6 +1479,8 @@ textarea:focus {
   top: 6.5rem;
   display: grid;
   gap: 0.9rem;
+  max-width: 100%;
+  min-width: 0;
   padding: 1rem;
   border: 1px solid rgba(230, 207, 191, 0.9);
   border-radius: 0.35rem;
@@ -2120,6 +2170,14 @@ textarea:focus {
 }
 
 @media (max-width: 720px) {
+  html,
+  body,
+  .app-page {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .site-header {
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 0;
@@ -2225,7 +2283,10 @@ textarea:focus {
 
   .booking-app-shell,
   .staff-shell {
+    width: 100%;
+    max-width: 100%;
     padding: 1.05rem 4vw 3rem;
+    overflow-x: hidden;
   }
 
   .booking-hero,
@@ -2240,6 +2301,44 @@ textarea:focus {
 
   .booking-hero-panel {
     min-width: 0;
+  }
+
+  .appointment-layout,
+  .appointment-form,
+  .form-section,
+  .form-grid,
+  .search-select,
+  .search-select input,
+  .search-select-menu,
+  .time-slots,
+  .manage-booking,
+  .manage-booking-form,
+  .manage-results,
+  .appointment-summary,
+  .confirmation-panel {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  input,
+  select,
+  textarea,
+  button,
+  .button,
+  input[type="date"] {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  input[type="date"] {
+    width: 100%;
+    appearance: auto;
+  }
+
+  .search-select-menu {
+    left: 0;
+    right: 0;
   }
 
   .form-section-heading,

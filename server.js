@@ -271,7 +271,7 @@ function assignStaff(bookings, requestedStaffId, date, time) {
 }
 
 function validateBooking(input) {
-  const required = ["customerName", "email", "phone", "service", "date", "time"];
+  const required = ["firstName", "lastName", "email", "phone", "service", "date", "time"];
   const missing = required.filter((key) => !String(input[key] || "").trim());
 
   if (missing.length > 0) {
@@ -477,6 +477,13 @@ function normalizeName(value) {
 }
 
 function bookingNameParts(booking) {
+  if (booking.firstName || booking.lastName) {
+    return {
+      firstName: normalizeName(booking.firstName),
+      lastName: normalizeName(booking.lastName)
+    };
+  }
+
   const parts = String(booking.customerName || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   return {
     firstName: parts[0] || "",
@@ -686,9 +693,13 @@ async function handleApi(req, res, pathname, searchParams) {
       }
 
       const staffName = bookableStaff.find((person) => person.id === staffId).name;
+      const firstName = String(input.firstName).trim();
+      const lastName = String(input.lastName).trim();
       const booking = {
         id: `apt_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        customerName: String(input.customerName).trim(),
+        firstName,
+        lastName,
+        customerName: `${firstName} ${lastName}`.trim(),
         email: String(input.email).trim().toLowerCase(),
         phone: displayPhone(input.phone),
         service: String(input.service).trim(),

@@ -260,7 +260,7 @@ function updateSummary() {
   summaryStaff.textContent = selectedStaff?.name || "Any available tech";
   summaryDate.textContent = dateInput.value ? displayDate(dateInput.value) : "Choose a date";
   summaryTime.textContent = selectedTime.value ? displayTime(selectedTime.value) : "Choose a time";
-  selectedDayHours.textContent = dateInput.value ? getDisplayHours(dateInput.value) : getDisplayHours(todayIso());
+  selectedDayHours.textContent = getDisplayHours(todayIso());
 }
 
 timeSlots?.addEventListener("click", (event) => {
@@ -405,6 +405,9 @@ form?.addEventListener("submit", async (event) => {
   }
 
   const data = Object.fromEntries(new FormData(form).entries());
+  data.firstName = normalizeName(data.firstName);
+  data.lastName = normalizeName(data.lastName);
+  data.customerName = `${data.firstName} ${data.lastName}`.trim();
   data.phone = phoneDigits(data.phone);
   const submitButton = form.querySelector("button[type='submit']");
   submitButton.disabled = true;

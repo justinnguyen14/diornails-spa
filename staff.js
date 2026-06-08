@@ -78,6 +78,13 @@ function getHours(dateString) {
   return { open: "09:00", close: "19:30" };
 }
 
+function calendarDisplayRange() {
+  return {
+    open: timeToMinutes("08:00"),
+    close: timeToMinutes("20:00")
+  };
+}
+
 function timeToMinutes(value) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
@@ -90,11 +97,7 @@ function minutesToTime(value) {
 }
 
 function scheduleRange(days) {
-  const ranges = days.map(getHours);
-  return {
-    open: Math.min(...ranges.map((range) => timeToMinutes(range.open))),
-    close: Math.max(...ranges.map((range) => timeToMinutes(range.close)))
-  };
+  return calendarDisplayRange();
 }
 
 function getRange() {
@@ -105,10 +108,8 @@ function getRange() {
   }
 
   if (view === "week") {
-    const day = selected.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const monday = addDays(selected, mondayOffset);
-    return { from: toIso(monday), to: toIso(addDays(monday, 6)) };
+    const sunday = addDays(selected, -selected.getDay());
+    return { from: toIso(sunday), to: toIso(addDays(sunday, 6)) };
   }
 
   const first = new Date(selected.getFullYear(), selected.getMonth(), 1, 12);
