@@ -241,11 +241,22 @@ a {
   box-shadow: none;
 }
 
+.button-danger {
+  color: var(--white);
+  background: #9f2f2f;
+  box-shadow: 0 10px 24px rgba(118, 31, 31, 0.18);
+}
+
 .button:hover,
 .button:focus-visible {
   background: var(--red-dark);
   box-shadow: 0 14px 30px rgba(157, 15, 28, 0.24);
   transform: translateY(-1px);
+}
+
+.button-danger:hover,
+.button-danger:focus-visible {
+  background: #7f2525;
 }
 
 .button-secondary:hover,
@@ -1093,9 +1104,13 @@ textarea:focus {
 
 .manage-booking-form {
   display: grid;
-  grid-template-columns: minmax(12rem, 22rem) auto;
+  grid-template-columns: minmax(18rem, 1fr) minmax(12rem, 18rem) auto;
   gap: 0.8rem;
   align-items: end;
+}
+
+.manage-name-grid {
+  gap: 0.8rem;
 }
 
 .manage-booking-form label {
@@ -1139,6 +1154,46 @@ textarea:focus {
   justify-self: start;
   min-height: 2.8rem;
   font-size: 1.05rem;
+}
+
+.cancel-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(17, 16, 20, 0.38);
+}
+
+.cancel-modal-card {
+  display: grid;
+  gap: 1rem;
+  width: min(31rem, 100%);
+  border: 1px solid rgba(230, 207, 191, 0.95);
+  border-radius: 0.35rem;
+  padding: clamp(1.2rem, 4vw, 1.7rem);
+  background: var(--white);
+  box-shadow: 0 24px 70px rgba(49, 31, 29, 0.22);
+}
+
+.cancel-modal-card h2 {
+  margin: 0;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.cancel-modal-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.cancel-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
 }
 
 .portal-login {
@@ -2083,6 +2138,12 @@ textarea:focus {
     font-size: 0.95rem;
   }
 
+  body:not(.app-page) .site-header > .button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    width: 100%;
+  }
+
   .site-header .menu-toggle {
     width: 2.55rem;
     height: 2.55rem;
@@ -2339,6 +2400,14 @@ textarea:focus {
 
   .manage-booking-form {
     grid-template-columns: 1fr;
+  }
+
+  .cancel-modal-actions {
+    display: grid;
+  }
+
+  .cancel-modal-actions .button {
+    width: 100%;
   }
 
   input[type="date"] {

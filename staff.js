@@ -17,6 +17,7 @@ let staff = [];
 let bookings = [];
 let selectedBookingId = "";
 let scheduleData = { weekly: {}, overrides: {} };
+let pendingStaffCancel = null;
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -118,6 +119,35 @@ function getRange() {
 function setPinStatus(message, type = "") {
   pinStatus.textContent = message;
   pinStatus.dataset.type = type;
+}
+
+function openStaffCancelModal(booking) {
+  pendingStaffCancel = booking;
+  const existing = document.querySelector("#staff-cancel-modal");
+
+  if (existing) {
+    existing.remove();
+  }
+
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="cancel-modal" id="staff-cancel-modal" role="dialog" aria-modal="true" aria-labelledby="staff-cancel-title">
+      <div class="cancel-modal-card">
+        <h2 id="staff-cancel-title">Cancel appointment?</h2>
+        <p>Are you sure you want to cancel ${escapeHtml(booking.customerName)}'s ${escapeHtml(booking.service)} appointment on ${displayDate(booking.date)} at ${displayTime(booking.time)}?</p>
+        <div class="cancel-modal-actions">
+          <button class="button button-danger" type="button" id="staff-confirm-cancel">Cancel Appointment</button>
+          <button class="button button-secondary" type="button" id="staff-keep-appointment">Don't Cancel</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  document.querySelector("#staff-confirm-cancel")?.focus();
+}
+
+function closeStaffCancelModal() {
+  pendingStaffCancel = null;
+  document.querySelector("#staff-cancel-modal")?.remove();
 }
 
 async function loadConfig() {
@@ -328,6 +358,10 @@ function renderBookingDetails() {
         <div><dt>Email</dt><dd><a href="mailto:${escapeHtml(booking.email)}">${escapeHtml(booking.email)}</a></dd></div>
         <div><dt>Notes</dt><dd>${escapeHtml(booking.notes || "None")}</dd></div>
       </dl>
+      <button class="button button-danger" type="button" data-staff-cancel-booking="${escapeHtml(booking.id)}">
+        Cancel This Appointment
+      </button>
+      <p class="form-status" id="staff-cancel-status" role="status"></p>
     </aside>
   `;
 }
@@ -639,6 +673,18 @@ calendarBoard?.addEventListener("change", async (event) => {
 });
 
 calendarBoard?.addEventListener("click", (event) => {
+  const cancelButton = event.target.closest("[data-staff-cancel-booking]");
+
+  if (cancelButton) {
+    const booking = bookings.find((item) => item.id === cancelButton.dataset.staffCancelBooking);
+
+    if (booking) {
+      openStaffCancelModal(booking);
+    }
+
+    return;
+  }
+
   const button = event.target.closest("[data-booking-id]");
 
   if (!button) {
@@ -647,6 +693,64 @@ calendarBoard?.addEventListener("click", (event) => {
 
   selectedBookingId = button.dataset.bookingId;
   renderCalendar();
+});
+
+document.addEventListener("click", async (event) => {
+  if (event.target.closest("#staff-keep-appointment") || event.target.id === "staff-cancel-modal") {
+    closeStaffCancelModal();
+    return;
+  }
+
+  const confirmButton = event.target.closest("#staff-confirm-cancel");
+
+  if (!confirmButton || !pendingStaffCancel) {
+    return;
+  }
+
+  confirmButton.disabled = true;
+  confirmButton.textContent = "Cancelling...";
+
+  try {
+    const response = await fetch(`/api/bookings/${pendingStaffCancel.id}/cancel`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Portal-Pin": portalPin
+      }
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to cancel appointment.");
+    }
+
+    const sentChannels = (result.booking?.cancellationNotifications || [])
+      .filter((notification) => notification.ok)
+      .map((notification) => notification.channel);
+    const notice = sentChannels.length
+      ? ` Cancellation notice sent by ${sentChannels.join(" and ")}.`
+      : " Cancellation saved. Email/text cancellation notice could not be sent yet.";
+
+    closeStaffCancelModal();
+    selectedBookingId = "";
+    await loadBookings();
+    calendarBoard.insertAdjacentHTML("afterbegin", `<p class="form-status staff-action-status" role="status">Appointment cancelled.${notice}</p>`);
+  } catch (error) {
+    confirmButton.disabled = false;
+    confirmButton.textContent = "Cancel Appointment";
+    const status = document.querySelector("#staff-cancel-status");
+
+    if (status) {
+      status.textContent = error.message;
+      status.dataset.type = "error";
+    }
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeStaffCancelModal();
+  }
 });
 
 if (portalPin) {

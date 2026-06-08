@@ -19,9 +19,15 @@ const selectedDayHours = document.querySelector("#selected-day-hours");
 const emailInput = form?.elements.email;
 const phoneInput = form?.elements.phone;
 const manageForm = document.querySelector("#manage-booking-form");
+const manageFirstNameInput = manageForm?.elements.lookupFirstName;
+const manageLastNameInput = manageForm?.elements.lookupLastName;
 const managePhoneInput = manageForm?.elements.lookupPhone;
 const manageResults = document.querySelector("#manage-results");
 const manageStatus = document.querySelector("#manage-status");
+const cancelModal = document.querySelector("#cancel-modal");
+const cancelModalCopy = document.querySelector("#cancel-modal-copy");
+const confirmCancelButton = document.querySelector("#confirm-cancel");
+const keepAppointmentButton = document.querySelector("#keep-appointment");
 
 const defaultServices = [
   "Manicure Gel",
@@ -44,6 +50,7 @@ const defaultStaff = [
 let config = { services: defaultServices, staff: defaultStaff };
 let serviceMenuOpen = false;
 let staffMenuOpen = false;
+let pendingCancel = null;
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -87,6 +94,31 @@ function setStatus(message, type = "") {
 function setManageStatus(message, type = "") {
   manageStatus.textContent = message;
   manageStatus.dataset.type = type;
+}
+
+function normalizeName(value) {
+  return String(value || "").trim();
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function openCancelModal(booking, phone, firstName, lastName, card) {
+  pendingCancel = { booking, phone, firstName, lastName, card };
+  cancelModalCopy.textContent = `Are you sure you want to cancel ${booking.service} on ${displayDate(booking.date)} at ${displayTime(booking.time)}?`;
+  cancelModal.classList.remove("is-hidden");
+  confirmCancelButton.focus();
+}
+
+function closeCancelModal() {
+  pendingCancel = null;
+  cancelModal.classList.add("is-hidden");
 }
 
 function isValidEmail(value) {
@@ -411,21 +443,28 @@ form?.addEventListener("submit", async (event) => {
   }
 });
 
-function renderManageResults(bookings, phone) {
+function renderManageResults(bookings, phone, firstName, lastName) {
   if (!bookings.length) {
-    manageResults.innerHTML = '<p class="slot-empty">No active appointments found for this phone number.</p>';
+    manageResults.innerHTML = '<p class="slot-empty">No active appointments found for that name and phone number.</p>';
     return;
   }
 
   manageResults.innerHTML = bookings.map((booking) => `
-    <article class="manage-appointment-card">
+    <article class="manage-appointment-card" data-booking-card="${escapeHtml(booking.id)}" data-booking-date="${escapeHtml(booking.date)}" data-booking-time="${escapeHtml(booking.time)}">
       <div>
         <strong>${displayDate(booking.date)} at ${displayTime(booking.time)}</strong>
-        <span>${booking.staffName}</span>
+        <span>${escapeHtml(booking.staffName)}</span>
       </div>
-      <h3>${booking.service}</h3>
-      <p>${booking.customerName}</p>
-      <button class="button button-secondary" type="button" data-cancel-booking="${booking.id}" data-phone="${phone}">
+      <h3>${escapeHtml(booking.service)}</h3>
+      <p>${escapeHtml(booking.customerName)}</p>
+      <button
+        class="button button-secondary"
+        type="button"
+        data-cancel-booking="${escapeHtml(booking.id)}"
+        data-phone="${escapeHtml(phone)}"
+        data-first-name="${escapeHtml(firstName)}"
+        data-last-name="${escapeHtml(lastName)}"
+      >
         Cancel Appointment
       </button>
     </article>
@@ -438,6 +477,8 @@ manageForm?.addEventListener("submit", async (event) => {
   manageResults.innerHTML = '<p class="slot-empty">Looking up appointments...</p>';
 
   const phone = phoneDigits(managePhoneInput.value);
+  const firstName = normalizeName(manageFirstNameInput.value);
+  const lastName = normalizeName(manageLastNameInput.value);
   managePhoneInput.setCustomValidity(phone.length === 10 ? "" : "Enter a full 10 digit phone number.");
 
   if (!manageForm.reportValidity()) {
@@ -445,14 +486,15 @@ manageForm?.addEventListener("submit", async (event) => {
   }
 
   try {
-    const response = await fetch(`/api/customer-bookings?phone=${encodeURIComponent(phone)}`);
+    const lookupParams = new URLSearchParams({ phone, firstName, lastName });
+    const response = await fetch(`/api/customer-bookings?${lookupParams.toString()}`);
     const result = await response.json();
 
     if (!response.ok) {
       throw new Error(result.error || "Unable to look up appointments.");
     }
 
-    renderManageResults(result.bookings || [], phone);
+    renderManageResults(result.bookings || [], phone, firstName, lastName);
   } catch (error) {
     manageResults.innerHTML = "";
     setManageStatus(error.message, "error");
@@ -466,15 +508,46 @@ manageResults?.addEventListener("click", async (event) => {
     return;
   }
 
-  button.disabled = true;
-  button.textContent = "Cancelling...";
   setManageStatus("");
+  const card = button.closest(".manage-appointment-card");
+  const booking = {
+    id: button.dataset.cancelBooking,
+    service: card?.querySelector("h3")?.textContent || "appointment",
+    date: card?.dataset.bookingDate || "",
+    time: card?.dataset.bookingTime || ""
+  };
+
+  openCancelModal(booking, button.dataset.phone, button.dataset.firstName, button.dataset.lastName, card);
+});
+
+keepAppointmentButton?.addEventListener("click", closeCancelModal);
+
+cancelModal?.addEventListener("click", (event) => {
+  if (event.target === cancelModal) {
+    closeCancelModal();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !cancelModal.classList.contains("is-hidden")) {
+    closeCancelModal();
+  }
+});
+
+confirmCancelButton?.addEventListener("click", async () => {
+  if (!pendingCancel) {
+    return;
+  }
+
+  const { booking, phone, firstName, lastName, card } = pendingCancel;
+  confirmCancelButton.disabled = true;
+  confirmCancelButton.textContent = "Cancelling...";
 
   try {
-    const response = await fetch(`/api/customer-bookings/${button.dataset.cancelBooking}/cancel`, {
+    const response = await fetch(`/api/customer-bookings/${booking.id}/cancel`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: button.dataset.phone })
+      body: JSON.stringify({ phone, firstName, lastName })
     });
     const result = await response.json();
 
@@ -482,17 +555,26 @@ manageResults?.addEventListener("click", async (event) => {
       throw new Error(result.error || "Unable to cancel appointment.");
     }
 
-    setManageStatus("Appointment cancelled. That time slot is now open again.");
-    button.closest(".manage-appointment-card")?.remove();
+    const sentChannels = (result.booking?.cancellationNotifications || [])
+      .filter((notification) => notification.ok)
+      .map((notification) => notification.channel);
+    const notificationText = sentChannels.length
+      ? ` Cancellation notice sent by ${sentChannels.join(" and ")}.`
+      : " Cancellation saved. Email/text cancellation notice could not be sent yet.";
+
+    closeCancelModal();
+    setManageStatus(`Appointment cancelled. That time slot is now open again.${notificationText}`);
+    card?.remove();
     await loadAvailability();
 
     if (!manageResults.querySelector(".manage-appointment-card")) {
-      manageResults.innerHTML = '<p class="slot-empty">No active appointments found for this phone number.</p>';
+      manageResults.innerHTML = '<p class="slot-empty">No active appointments found for that name and phone number.</p>';
     }
   } catch (error) {
-    button.disabled = false;
-    button.textContent = "Cancel Appointment";
     setManageStatus(error.message, "error");
+  } finally {
+    confirmCancelButton.disabled = false;
+    confirmCancelButton.textContent = "Cancel Appointment";
   }
 });
 

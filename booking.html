@@ -172,9 +172,19 @@
       <section class="manage-booking" aria-labelledby="manage-booking-title">
         <div class="manage-booking-heading">
           <h2 id="manage-booking-title">Manage appointment</h2>
-          <p>Look up your appointment using the phone number used when booking.</p>
+          <p>Look up your appointment using the first name, last name, and phone number used when booking.</p>
         </div>
         <form class="manage-booking-form" id="manage-booking-form">
+          <div class="form-grid manage-name-grid">
+            <label>
+              <span>First name</span>
+              <input name="lookupFirstName" autocomplete="given-name" required />
+            </label>
+            <label>
+              <span>Last name</span>
+              <input name="lookupLastName" autocomplete="family-name" required />
+            </label>
+          </div>
           <label>
             <span>Phone number</span>
             <input
@@ -193,8 +203,19 @@
         <div class="manage-results" id="manage-results" aria-live="polite"></div>
         <p class="form-status" id="manage-status" role="status"></p>
       </section>
+
+      <div class="cancel-modal is-hidden" id="cancel-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title">
+        <div class="cancel-modal-card">
+          <h2 id="cancel-modal-title">Cancel appointment?</h2>
+          <p id="cancel-modal-copy">Are you sure you want to cancel this appointment?</p>
+          <div class="cancel-modal-actions">
+            <button class="button button-danger" type="button" id="confirm-cancel">Cancel Appointment</button>
+            <button class="button button-secondary" type="button" id="keep-appointment">Don't Cancel</button>
+          </div>
+        </div>
+      </div>
     </main>
 
-    <script src="booking.js?v=14"></script>
+    <script src="booking.js?v=15"></script>
   </body>
 </html>

@@ -396,6 +396,103 @@ async function notifyCustomer(booking) {
   return results;
 }
 
+async function notifyCancellation(booking, cancelledBy = "the salon") {
+  const formattedDate = displayDate(booking.date);
+  const summary = `Dior Nails & Spa appointment cancelled for ${booking.customerName} on ${formattedDate} at ${booking.time} with ${booking.staffName}. Service: ${booking.service}. Cancelled by ${cancelledBy}. Questions? Call (862) 258-3070.`;
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; color: #111014; line-height: 1.6;">
+      <h1 style="color: #967036;">Your Dior Nails appointment was cancelled</h1>
+      <p>Hi ${escapeHtml(booking.customerName)},</p>
+      <p>Your appointment has been cancelled.</p>
+      <table style="border-collapse: collapse; margin: 18px 0;">
+        <tr><td style="padding: 6px 14px 6px 0;"><strong>Service</strong></td><td>${escapeHtml(booking.service)}</td></tr>
+        <tr><td style="padding: 6px 14px 6px 0;"><strong>Nail tech</strong></td><td>${escapeHtml(booking.staffName)}</td></tr>
+        <tr><td style="padding: 6px 14px 6px 0;"><strong>Date</strong></td><td>${escapeHtml(formattedDate)}</td></tr>
+        <tr><td style="padding: 6px 14px 6px 0;"><strong>Time</strong></td><td>${escapeHtml(booking.time)}</td></tr>
+      </table>
+      <p>Questions? Call Dior Nails &amp; Spa at <a href="tel:+18622583070">(862) 258-3070</a>.</p>
+    </div>
+  `;
+  const results = [];
+
+  if (process.env.RESEND_API_KEY && process.env.NOTIFICATION_FROM_EMAIL) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: process.env.NOTIFICATION_FROM_EMAIL,
+        to: booking.email,
+        subject: "Your Dior Nails appointment was cancelled",
+        text: summary,
+        html: emailHtml
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    results.push({
+      channel: "email",
+      ok: response.ok,
+      status: response.status,
+      id: result.id,
+      reason: result.message || result.error
+    });
+  } else {
+    results.push({ channel: "email", ok: false, reason: "missing_email_provider" });
+  }
+
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER) {
+    const params = new URLSearchParams({
+      From: process.env.TWILIO_FROM_NUMBER,
+      To: formatPhoneForSms(booking.phone),
+      Body: summary
+    });
+    const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString("base64");
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params
+    });
+    const result = await response.json().catch(() => ({}));
+    results.push({
+      channel: "sms",
+      ok: response.ok,
+      status: response.status,
+      id: result.sid,
+      reason: result.message
+    });
+  } else {
+    results.push({ channel: "sms", ok: false, reason: "missing_sms_provider" });
+  }
+
+  return results;
+}
+
+function normalizeName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function bookingNameParts(booking) {
+  const parts = String(booking.customerName || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.at(-1) || ""
+  };
+}
+
+function matchesCustomerIdentity(booking, phone, firstName, lastName) {
+  const parts = bookingNameParts(booking);
+  return (
+    phoneDigits(booking.phone) === phoneDigits(phone) &&
+    parts.firstName === normalizeName(firstName) &&
+    parts.lastName === normalizeName(lastName)
+  );
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -621,6 +718,8 @@ async function handleApi(req, res, pathname, searchParams) {
 
   if (req.method === "GET" && pathname === "/api/customer-bookings") {
     const phone = searchParams.get("phone") || "";
+    const firstName = searchParams.get("firstName") || "";
+    const lastName = searchParams.get("lastName") || "";
     const digits = phoneDigits(phone);
 
     if (digits.length !== 10) {
@@ -628,8 +727,13 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
+    if (!normalizeName(firstName) || !normalizeName(lastName)) {
+      sendJson(res, 400, { error: "Please enter the first and last name used for booking." });
+      return;
+    }
+
     const bookings = readBookings()
-      .filter((booking) => phoneDigits(booking.phone) === digits && booking.status !== "cancelled")
+      .filter((booking) => matchesCustomerIdentity(booking, phone, firstName, lastName) && booking.status !== "cancelled")
       .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 
     sendJson(res, 200, { bookings });
@@ -640,24 +744,37 @@ async function handleApi(req, res, pathname, searchParams) {
     const id = pathname.split("/").at(-2);
     const input = await readJson(req);
     const digits = phoneDigits(input.phone);
+    const firstName = input.firstName || "";
+    const lastName = input.lastName || "";
 
     if (digits.length !== 10) {
       sendJson(res, 400, { error: "Please enter a full 10 digit phone number." });
       return;
     }
 
-    const bookings = readBookings();
-    const index = bookings.findIndex((booking) => booking.id === id && phoneDigits(booking.phone) === digits);
-
-    if (index === -1 || bookings[index].status === "cancelled") {
-      sendJson(res, 404, { error: "No active appointment found for that phone number." });
+    if (!normalizeName(firstName) || !normalizeName(lastName)) {
+      sendJson(res, 400, { error: "Please enter the first and last name used for booking." });
       return;
     }
+
+    const bookings = readBookings();
+    const index = bookings.findIndex((booking) => booking.id === id && matchesCustomerIdentity(booking, input.phone, firstName, lastName));
+
+    if (index === -1 || bookings[index].status === "cancelled") {
+      sendJson(res, 404, { error: "No active appointment found for that name and phone number." });
+      return;
+    }
+
+    const cancellationNotifications = await notifyCancellation(bookings[index], "customer").catch((error) => [
+      { channel: "notification", ok: false, reason: error.message }
+    ]);
 
     bookings[index] = {
       ...bookings[index],
       status: "cancelled",
-      cancelledAt: new Date().toISOString()
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: "customer",
+      cancellationNotifications
     };
     writeBookings(bookings);
     sendJson(res, 200, { booking: bookings[index] });
@@ -681,6 +798,36 @@ async function handleApi(req, res, pathname, searchParams) {
     });
 
     sendJson(res, 200, { bookings: filtered });
+    return;
+  }
+
+  if (req.method === "PATCH" && pathname.startsWith("/api/bookings/") && pathname.endsWith("/cancel")) {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+
+    const id = pathname.split("/").at(-2);
+    const bookings = readBookings();
+    const index = bookings.findIndex((booking) => booking.id === id);
+
+    if (index === -1 || bookings[index].status === "cancelled") {
+      sendJson(res, 404, { error: "Active booking not found." });
+      return;
+    }
+
+    const cancellationNotifications = await notifyCancellation(bookings[index], "salon staff").catch((error) => [
+      { channel: "notification", ok: false, reason: error.message }
+    ]);
+
+    bookings[index] = {
+      ...bookings[index],
+      status: "cancelled",
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: "staff",
+      cancellationNotifications
+    };
+    writeBookings(bookings);
+    sendJson(res, 200, { booking: bookings[index] });
     return;
   }
 
