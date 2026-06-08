@@ -471,6 +471,22 @@ async function handleApi(req, res, pathname, searchParams) {
       });
     }
 
+    if (input.overrideDates && typeof input.overrideDates === "object") {
+      Object.entries(input.overrideDates).forEach(([date, overrides]) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !overrides || typeof overrides !== "object") {
+          return;
+        }
+
+        schedule.overrides[date] = schedule.overrides[date] || {};
+
+        bookableStaff.forEach((person) => {
+          if (typeof overrides[person.id] === "boolean") {
+            schedule.overrides[date][person.id] = overrides[person.id];
+          }
+        });
+      });
+    }
+
     writeSchedule(schedule);
     sendJson(res, 200, { schedule });
     return;
@@ -600,6 +616,51 @@ async function handleApi(req, res, pathname, searchParams) {
     } catch (error) {
       sendJson(res, 400, { error: "Unable to create booking." });
     }
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/customer-bookings") {
+    const phone = searchParams.get("phone") || "";
+    const digits = phoneDigits(phone);
+
+    if (digits.length !== 10) {
+      sendJson(res, 400, { error: "Please enter a full 10 digit phone number." });
+      return;
+    }
+
+    const bookings = readBookings()
+      .filter((booking) => phoneDigits(booking.phone) === digits && booking.status !== "cancelled")
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+
+    sendJson(res, 200, { bookings });
+    return;
+  }
+
+  if (req.method === "PATCH" && pathname.startsWith("/api/customer-bookings/") && pathname.endsWith("/cancel")) {
+    const id = pathname.split("/").at(-2);
+    const input = await readJson(req);
+    const digits = phoneDigits(input.phone);
+
+    if (digits.length !== 10) {
+      sendJson(res, 400, { error: "Please enter a full 10 digit phone number." });
+      return;
+    }
+
+    const bookings = readBookings();
+    const index = bookings.findIndex((booking) => booking.id === id && phoneDigits(booking.phone) === digits);
+
+    if (index === -1 || bookings[index].status === "cancelled") {
+      sendJson(res, 404, { error: "No active appointment found for that phone number." });
+      return;
+    }
+
+    bookings[index] = {
+      ...bookings[index],
+      status: "cancelled",
+      cancelledAt: new Date().toISOString()
+    };
+    writeBookings(bookings);
+    sendJson(res, 200, { booking: bookings[index] });
     return;
   }
 

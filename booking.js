@@ -18,6 +18,10 @@ const summaryTime = document.querySelector("#summary-time");
 const selectedDayHours = document.querySelector("#selected-day-hours");
 const emailInput = form?.elements.email;
 const phoneInput = form?.elements.phone;
+const manageForm = document.querySelector("#manage-booking-form");
+const managePhoneInput = manageForm?.elements.lookupPhone;
+const manageResults = document.querySelector("#manage-results");
+const manageStatus = document.querySelector("#manage-status");
 
 const defaultServices = [
   "Manicure Gel",
@@ -78,6 +82,11 @@ function getDisplayHours(dateString) {
 function setStatus(message, type = "") {
   statusMessage.textContent = message;
   statusMessage.dataset.type = type;
+}
+
+function setManageStatus(message, type = "") {
+  manageStatus.textContent = message;
+  manageStatus.dataset.type = type;
 }
 
 function isValidEmail(value) {
@@ -263,6 +272,12 @@ phoneInput?.addEventListener("input", () => {
   phoneInput.setCustomValidity(digits.length === 10 || digits.length === 0 ? "" : "Enter a full 10 digit phone number.");
 });
 
+managePhoneInput?.addEventListener("input", () => {
+  managePhoneInput.value = formatPhone(managePhoneInput.value);
+  const digits = phoneDigits(managePhoneInput.value);
+  managePhoneInput.setCustomValidity(digits.length === 10 || digits.length === 0 ? "" : "Enter a full 10 digit phone number.");
+});
+
 serviceInput?.addEventListener("focus", () => {
   renderServiceOptions("");
   setServiceMenuOpen(true);
@@ -393,6 +408,91 @@ form?.addEventListener("submit", async (event) => {
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Confirm Appointment";
+  }
+});
+
+function renderManageResults(bookings, phone) {
+  if (!bookings.length) {
+    manageResults.innerHTML = '<p class="slot-empty">No active appointments found for this phone number.</p>';
+    return;
+  }
+
+  manageResults.innerHTML = bookings.map((booking) => `
+    <article class="manage-appointment-card">
+      <div>
+        <strong>${displayDate(booking.date)} at ${displayTime(booking.time)}</strong>
+        <span>${booking.staffName}</span>
+      </div>
+      <h3>${booking.service}</h3>
+      <p>${booking.customerName}</p>
+      <button class="button button-secondary" type="button" data-cancel-booking="${booking.id}" data-phone="${phone}">
+        Cancel Appointment
+      </button>
+    </article>
+  `).join("");
+}
+
+manageForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setManageStatus("");
+  manageResults.innerHTML = '<p class="slot-empty">Looking up appointments...</p>';
+
+  const phone = phoneDigits(managePhoneInput.value);
+  managePhoneInput.setCustomValidity(phone.length === 10 ? "" : "Enter a full 10 digit phone number.");
+
+  if (!manageForm.reportValidity()) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/customer-bookings?phone=${encodeURIComponent(phone)}`);
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to look up appointments.");
+    }
+
+    renderManageResults(result.bookings || [], phone);
+  } catch (error) {
+    manageResults.innerHTML = "";
+    setManageStatus(error.message, "error");
+  }
+});
+
+manageResults?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-cancel-booking]");
+
+  if (!button) {
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Cancelling...";
+  setManageStatus("");
+
+  try {
+    const response = await fetch(`/api/customer-bookings/${button.dataset.cancelBooking}/cancel`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: button.dataset.phone })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to cancel appointment.");
+    }
+
+    setManageStatus("Appointment cancelled. That time slot is now open again.");
+    button.closest(".manage-appointment-card")?.remove();
+    await loadAvailability();
+
+    if (!manageResults.querySelector(".manage-appointment-card")) {
+      manageResults.innerHTML = '<p class="slot-empty">No active appointments found for this phone number.</p>';
+    }
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Cancel Appointment";
+    setManageStatus(error.message, "error");
   }
 });
 

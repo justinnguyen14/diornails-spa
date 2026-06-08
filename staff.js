@@ -32,6 +32,12 @@ function toIso(date) {
   return date.toISOString().slice(0, 10);
 }
 
+function weekDatesFor(value) {
+  const selected = new Date(`${value || todayIso()}T12:00:00`);
+  const sunday = addDays(selected, -selected.getDay());
+  return Array.from({ length: 7 }, (_, index) => toIso(addDays(sunday, index)));
+}
+
 function displayDate(value) {
   const date = new Date(`${value}T12:00:00`);
   const weekday = date.toLocaleDateString([], { weekday: "short" });
@@ -393,6 +399,7 @@ function isWeeklyDayChecked(staffId, day) {
 
 function renderManager() {
   const date = calendarDate.value || todayIso();
+  const weekDates = weekDatesFor(date);
   const weekdays = [
     { id: 0, label: "Sunday" },
     { id: 1, label: "Monday" },
@@ -410,12 +417,19 @@ function renderManager() {
           <h2>Manager schedule</h2>
           <p>Set weekly employee workdays and override the selected calendar date when someone is off or added. Checked means working.</p>
         </div>
-        <button class="button" type="button" id="save-schedule">Save Schedule</button>
+        <div class="manager-actions">
+          <label>
+            <span>Week selector</span>
+            <input id="manager-week-date" type="date" value="${date}" />
+          </label>
+          <button class="button" type="button" id="save-schedule">Save Schedule</button>
+        </div>
       </div>
 
       <div class="manager-sections">
         <section class="manager-panel">
           <h3>Weekly schedule</h3>
+          <p>Checked means this employee normally works that weekday every week.</p>
           <div class="manager-table">
             ${staff.map((person) => `
               <div class="manager-row">
@@ -440,7 +454,7 @@ function renderManager() {
 
         <section class="manager-panel">
           <h3>Selected date: ${displayDate(date)}</h3>
-          <p>These settings override the weekly schedule for this date only.</p>
+          <p>Smaller date override. Checked means working this date only.</p>
           <div class="date-override-list">
             ${staff.map((person) => `
               <label>
@@ -455,6 +469,33 @@ function renderManager() {
           </div>
         </section>
       </div>
+
+      <section class="manager-panel manager-week-panel">
+        <h3>Selected week: ${displayDate(weekDates[0])} - ${displayDate(weekDates[6])}</h3>
+        <p>Use this to set or adjust a future week without changing the normal weekly schedule.</p>
+        <div class="week-override-table">
+          <div class="week-override-header">
+            <span>Employee</span>
+            ${weekDates.map((day) => `<span>${displayDate(day)}</span>`).join("")}
+          </div>
+          ${staff.map((person) => `
+            <div class="week-override-row">
+              <strong>${escapeHtml(person.name)}</strong>
+              ${weekDates.map((day) => `
+                <label>
+                  <input
+                    type="checkbox"
+                    data-week-date="${day}"
+                    data-week-date-staff="${escapeHtml(person.id)}"
+                    ${isStaffWorking(person, day) ? "checked" : ""}
+                  />
+                  <span>Working</span>
+                </label>
+              `).join("")}
+            </div>
+          `).join("")}
+        </div>
+      </section>
       <p class="form-status" id="manager-status" role="status"></p>
     </section>
   `;
@@ -537,6 +578,7 @@ calendarBoard?.addEventListener("click", async (event) => {
 
   const weekly = {};
   const overrides = {};
+  const overrideDates = {};
   const date = calendarDate.value || todayIso();
   const managerStatus = document.querySelector("#manager-status");
 
@@ -545,6 +587,13 @@ calendarBoard?.addEventListener("click", async (event) => {
       .map((input) => Number(input.value));
     const dateInput = document.querySelector(`[data-date-staff="${person.id}"]`);
     overrides[person.id] = Boolean(dateInput?.checked);
+  });
+
+  document.querySelectorAll("[data-week-date]").forEach((input) => {
+    const dateValue = input.dataset.weekDate;
+    const staffId = input.dataset.weekDateStaff;
+    overrideDates[dateValue] = overrideDates[dateValue] || {};
+    overrideDates[dateValue][staffId] = input.checked;
   });
 
   saveButton.disabled = true;
@@ -557,7 +606,7 @@ calendarBoard?.addEventListener("click", async (event) => {
         "Content-Type": "application/json",
         "X-Portal-Pin": portalPin
       },
-      body: JSON.stringify({ weekly, date, overrides })
+      body: JSON.stringify({ weekly, date, overrides, overrideDates })
     });
     const data = await response.json();
 
@@ -576,6 +625,17 @@ calendarBoard?.addEventListener("click", async (event) => {
     saveButton.disabled = false;
     saveButton.textContent = "Save Schedule";
   }
+});
+
+calendarBoard?.addEventListener("change", async (event) => {
+  const weekInput = event.target.closest("#manager-week-date");
+
+  if (!weekInput) {
+    return;
+  }
+
+  calendarDate.value = weekInput.value || todayIso();
+  await loadBookings();
 });
 
 calendarBoard?.addEventListener("click", (event) => {

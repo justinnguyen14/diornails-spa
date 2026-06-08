@@ -21,16 +21,26 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 5.25rem;
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
   min-width: 320px;
+  width: 100%;
   overflow-x: hidden;
   color: var(--ink);
   background:
     linear-gradient(180deg, rgba(251, 240, 239, 0.42), rgba(255, 255, 255, 0) 38rem),
     var(--white);
+}
+
+img,
+svg,
+video,
+canvas,
+iframe {
+  max-width: 100%;
 }
 
 a {
@@ -799,6 +809,8 @@ textarea:focus {
 
 .app-page {
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
   background:
     linear-gradient(180deg, rgba(251, 240, 239, 0.78), rgba(255, 255, 255, 0) 27rem),
     var(--white);
@@ -811,8 +823,10 @@ textarea:focus {
 .booking-app-shell,
 .staff-shell {
   width: min(88rem, 100%);
+  max-width: 100%;
   margin: 0 auto;
   padding: clamp(1.5rem, 4vw, 3.5rem) 5vw 5rem;
+  overflow-x: hidden;
 }
 
 .booking-hero,
@@ -1048,6 +1062,83 @@ textarea:focus {
   margin: 0;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.manage-booking {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: clamp(1.15rem, 2vw, 1.6rem);
+  border: 1px solid rgba(230, 207, 191, 0.88);
+  border-radius: 0.35rem;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.manage-booking-heading h2,
+.manage-appointment-card h3 {
+  margin: 0;
+  font-family: "Cormorant Garamond", Georgia, serif;
+}
+
+.manage-booking-heading h2 {
+  font-size: 1.8rem;
+}
+
+.manage-booking-heading p,
+.manage-appointment-card p {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.manage-booking-form {
+  display: grid;
+  grid-template-columns: minmax(12rem, 22rem) auto;
+  gap: 0.8rem;
+  align-items: end;
+}
+
+.manage-booking-form label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.manage-booking-form label span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.manage-results {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.manage-appointment-card {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid rgba(230, 207, 191, 0.9);
+  border-left: 0.28rem solid var(--gold);
+  border-radius: 0.3rem;
+  background: var(--white);
+}
+
+.manage-appointment-card > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--red);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.manage-appointment-card .button {
+  justify-self: start;
+  min-height: 2.8rem;
+  font-size: 1.05rem;
 }
 
 .portal-login {
@@ -1554,8 +1645,8 @@ textarea:focus {
 }
 
 .manager-heading {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
   align-items: center;
   padding: 1rem;
@@ -1578,9 +1669,31 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.manager-actions {
+  display: grid;
+  grid-template-columns: minmax(11rem, 14rem) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.manager-actions label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.manager-actions label span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .manager-sections {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
+  grid-template-columns: minmax(0, 1fr) minmax(13rem, 16rem);
   gap: 1rem;
   align-items: start;
 }
@@ -1588,7 +1701,9 @@ textarea:focus {
 .manager-panel {
   display: grid;
   gap: 1rem;
+  min-width: 0;
   padding: 1rem;
+  overflow: hidden;
 }
 
 .manager-panel h3 {
@@ -1600,6 +1715,11 @@ textarea:focus {
 .date-override-list {
   display: grid;
   gap: 0.75rem;
+}
+
+.manager-table {
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
 }
 
 .manager-row {
@@ -1617,13 +1737,15 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(7, minmax(6rem, 1fr));
   gap: 0.4rem;
+  min-width: 44rem;
 }
 
 .weekday-checks label,
-.date-override-list label {
+.date-override-list label,
+.week-override-row label {
+  justify-content: flex-start;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 0.45rem;
   min-height: 2.75rem;
   border: 1px solid rgba(230, 207, 191, 0.9);
@@ -1636,8 +1758,16 @@ textarea:focus {
   text-align: center;
 }
 
+.date-override-list label {
+  min-height: 2.35rem;
+  padding-inline: 0.55rem;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
 .weekday-checks input,
-.date-override-list input {
+.date-override-list input,
+.week-override-row input {
   flex: 0 0 auto;
   width: 1rem;
   height: 1rem;
@@ -1645,10 +1775,60 @@ textarea:focus {
 }
 
 .weekday-checks label:has(input:checked),
-.date-override-list label:has(input:checked) {
+.date-override-list label:has(input:checked),
+.week-override-row label:has(input:checked) {
   border-color: rgba(201, 150, 85, 0.8);
   background: #fff3dc;
   color: var(--red);
+}
+
+.manager-week-panel {
+  overflow: hidden;
+}
+
+.week-override-table {
+  display: grid;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.week-override-header,
+.week-override-row {
+  display: grid;
+  grid-template-columns: 8rem repeat(7, minmax(6rem, 1fr));
+  gap: 0.4rem;
+  min-width: 58rem;
+  align-items: stretch;
+}
+
+.week-override-header span {
+  display: flex;
+  align-items: center;
+  min-height: 2.25rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.week-override-row {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(230, 207, 191, 0.8);
+}
+
+.week-override-row strong {
+  display: flex;
+  align-items: center;
+  color: var(--ink);
+}
+
+.week-override-row label {
+  min-height: 2.5rem;
+  padding-inline: 0.55rem;
+  font-size: 0.78rem;
 }
 
 .is-hidden {
@@ -1736,6 +1916,7 @@ textarea:focus {
   .site-header {
     grid-template-columns: 1fr auto auto;
     padding-inline: 5vw;
+    max-width: 100%;
   }
 
   .menu-toggle {
@@ -1832,8 +2013,14 @@ textarea:focus {
   .appointment-layout,
   .staff-dashboard-head,
   .calendar-toolbar,
-  .staff-calendar-layout {
+  .staff-calendar-layout,
+  .manager-heading,
+  .manager-sections {
     grid-template-columns: 1fr;
+  }
+
+  .manager-actions {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .appointment-summary {
@@ -1879,25 +2066,50 @@ textarea:focus {
 
 @media (max-width: 720px) {
   .site-header {
-    grid-template-columns: 1fr auto;
-    min-height: 4.5rem;
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 0;
+    gap: 0.55rem 0.75rem;
+    padding: 0.65rem 4vw;
   }
 
   .brand {
-    font-size: 1.9rem;
+    min-width: 0;
+    font-size: clamp(1.55rem, 8vw, 1.9rem);
+  }
+
+  .site-header > .button {
+    min-height: 2.45rem;
+    padding-inline: 0.8rem;
+    font-size: 0.95rem;
+  }
+
+  .site-header .menu-toggle {
+    width: 2.55rem;
+    height: 2.55rem;
+  }
+
+  .nav-links {
+    left: 4vw;
+    right: 4vw;
   }
 
   .app-nav-links {
     grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
     justify-content: start;
     width: 100%;
-    gap: 1rem;
-    padding-bottom: 0.8rem;
+    gap: 0.4rem;
+    padding-bottom: 0;
   }
 
   .app-nav-links a {
-    font-size: 1rem;
+    border: 1px solid rgba(230, 207, 191, 0.9);
+    border-radius: 0.25rem;
+    padding: 0.45rem 0.65rem;
+    background: rgba(255, 250, 248, 0.82);
+    font-size: 0.94rem;
+    line-height: 1;
   }
 
   .button-small {
@@ -1946,7 +2158,23 @@ textarea:focus {
   .booking-hero h1,
   .portal-login h1,
   .staff-dashboard-head h1 {
-    font-size: clamp(2.7rem, 15vw, 4.2rem);
+    margin-bottom: 0.45rem;
+    font-size: clamp(2.25rem, 13vw, 3.4rem);
+  }
+
+  .booking-app-shell,
+  .staff-shell {
+    padding: 1.05rem 4vw 3rem;
+  }
+
+  .booking-hero,
+  .staff-dashboard-head {
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+  }
+
+  .booking-hero-panel {
+    padding: 0.9rem;
   }
 
   .booking-hero-panel {
@@ -1967,6 +2195,72 @@ textarea:focus {
   .segmented-control {
     width: 100%;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .segmented-control button {
+    min-height: 2.55rem;
+    padding-inline: 0.35rem;
+    font-size: 0.82rem;
+  }
+
+  .calendar-toolbar,
+  .calendar-summary {
+    gap: 0.75rem;
+  }
+
+  .manager-heading,
+  .manager-panel {
+    padding: 0.85rem;
+  }
+
+  .manager-heading {
+    gap: 0.8rem;
+  }
+
+  .manager-heading h2 {
+    font-size: 1.7rem;
+  }
+
+  .manager-actions {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .manager-actions .button {
+    width: 100%;
+  }
+
+  .manager-panel h3 {
+    font-size: 1.35rem;
+  }
+
+  .date-override-list {
+    gap: 0.5rem;
+  }
+
+  .date-override-list label {
+    min-height: 2.2rem;
+    font-size: 0.74rem;
+  }
+
+  .weekday-checks {
+    min-width: 39rem;
+    grid-template-columns: repeat(7, minmax(5.35rem, 1fr));
+  }
+
+  .week-override-header,
+  .week-override-row {
+    grid-template-columns: 6.5rem repeat(7, minmax(5.45rem, 1fr));
+    min-width: 46rem;
+  }
+
+  .week-override-header span {
+    font-size: 0.66rem;
+  }
+
+  .week-override-row label {
+    min-height: 2.25rem;
+    font-size: 0.72rem;
   }
 
   .services,
@@ -2038,8 +2332,13 @@ textarea:focus {
 
   .booking-submit,
   .pin-form .button,
-  .staff-dashboard-head .button {
+  .staff-dashboard-head .button,
+  .manage-booking-form .button {
     width: 100%;
+  }
+
+  .manage-booking-form {
+    grid-template-columns: 1fr;
   }
 
   input[type="date"] {

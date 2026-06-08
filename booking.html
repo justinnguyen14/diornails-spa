@@ -168,8 +168,33 @@
           <a class="button button-secondary" href="index.html">Back to Website</a>
         </div>
       </section>
+
+      <section class="manage-booking" aria-labelledby="manage-booking-title">
+        <div class="manage-booking-heading">
+          <h2 id="manage-booking-title">Manage appointment</h2>
+          <p>Look up your appointment using the phone number used when booking.</p>
+        </div>
+        <form class="manage-booking-form" id="manage-booking-form">
+          <label>
+            <span>Phone number</span>
+            <input
+              name="lookupPhone"
+              type="tel"
+              inputmode="tel"
+              autocomplete="tel"
+              placeholder="10 digit phone number"
+              maxlength="14"
+              title="Enter the 10 digit phone number used for booking."
+              required
+            />
+          </label>
+          <button class="button" type="submit">Find Appointment</button>
+        </form>
+        <div class="manage-results" id="manage-results" aria-live="polite"></div>
+        <p class="form-status" id="manage-status" role="status"></p>
+      </section>
     </main>
 
-    <script src="booking.js?v=13"></script>
+    <script src="booking.js?v=14"></script>
   </body>
 </html>
