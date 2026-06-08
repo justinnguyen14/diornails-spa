@@ -770,6 +770,27 @@ input[list] {
   gap: 0.2rem;
 }
 
+.search-select-group {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.search-select-group + .search-select-group {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--line);
+}
+
+.search-select-group p {
+  margin: 0;
+  padding: 0.35rem 0.55rem 0.25rem;
+  color: var(--red);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .search-select-menu button {
   min-height: 2.75rem;
   border: 0;
@@ -1422,11 +1443,11 @@ textarea:focus {
   gap: 0.14rem;
   overflow: hidden;
   padding: 0.48rem 0.58rem;
-  color: #3a2719;
-  border: 1px solid rgba(201, 150, 85, 0.75);
-  border-left: 0.3rem solid var(--gold);
+  color: var(--event-ink, #3a2719);
+  border: 1px solid var(--event-border, rgba(201, 150, 85, 0.75));
+  border-left: 0.3rem solid var(--event-border, var(--gold));
   border-radius: 0.32rem;
-  background: #fff3dc;
+  background: var(--event-bg, #fff3dc);
   box-shadow: 0 10px 20px rgba(93, 45, 38, 0.12);
   cursor: pointer;
   font: inherit;
@@ -1439,13 +1460,13 @@ textarea:focus {
 }
 
 .schedule-event span {
-  color: #665241;
+  color: color-mix(in srgb, var(--event-ink, #665241) 78%, #ffffff);
   font-size: 0.72rem;
   line-height: 1.22;
 }
 
 .schedule-event-notes {
-  border-top: 1px solid rgba(201, 150, 85, 0.35);
+  border-top: 1px solid color-mix(in srgb, var(--event-border, #c99655) 42%, #ffffff);
   padding-top: 0.16rem;
 }
 

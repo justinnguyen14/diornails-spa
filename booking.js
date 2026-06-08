@@ -29,17 +29,79 @@ const cancelModalCopy = document.querySelector("#cancel-modal-copy");
 const confirmCancelButton = document.querySelector("#confirm-cancel");
 const keepAppointmentButton = document.querySelector("#keep-appointment");
 
-const defaultServices = [
-  "Manicure Gel",
-  "Manicure Gel and Pedicure Gel",
-  "Manicure Gel and Pedicure Regular",
-  "Manicure Regular",
-  "Pedicure and Manicure and Regular",
-  "Pedicure Regular",
-  "Pedicure with Gel Color",
-  "Spa Pedicure Volcano",
-  "Spa Pedicure with Gel Color"
-].sort((a, b) => a.localeCompare(b));
+const defaultServiceGroups = [
+  {
+    name: "Manicure",
+    services: [
+      "Manicure Gel",
+      "Manicure Regular",
+      "Manicure Gel and Pedicure Gel",
+      "Pedicure and Manicure and Regular",
+      "Manicure Gel and Pedicure Regular"
+    ]
+  },
+  {
+    name: "Pedicure",
+    services: [
+      "Pedicure Regular",
+      "Pedicure with Gel Color",
+      "Spa Pedicure with Gel Color",
+      "Spa Pedicure Volcano"
+    ]
+  },
+  {
+    name: "Nail Services",
+    services: [
+      "Acrylic/Hard Gel Nail Removal + Manicure Gel Color",
+      "Full Set Gel",
+      "Crystal Gel Full Set Pink & White",
+      "Full Set Pink & White Acrylic",
+      "Full Set Acrylic Solar",
+      "Full Set Acrylic French",
+      "Fill in Pink & White Gel",
+      "Fill In Gel French",
+      "Fill in Gel Pink Only",
+      "Fill In Gel & Gel Colors",
+      "Fill in Acrylic",
+      "Acrylic Fill Pink & White",
+      "Polish Change Nail Color",
+      "Polish Change Toe Nails Regular",
+      "Polish Change Nail Gel Color",
+      "Polish Change Toe Gel Color",
+      "Nail Repair and Up",
+      "Nails Removal",
+      "Nails Cut and Up",
+      "French",
+      "Callus Removal",
+      "Airbrush Brush & Up"
+    ]
+  },
+  {
+    name: "Waxing",
+    services: [
+      "Eyebrow Wax",
+      "Lip Wax",
+      "Chin Wax",
+      "Face Side Wax",
+      "Full Face",
+      "Half Arm",
+      "Full Arm",
+      "Under Arm",
+      "Stomach Line",
+      "Full Stomach",
+      "Half Leg",
+      "Full Leg",
+      "Bikini",
+      "Bikini & Thigh",
+      "Chest & Up",
+      "Back & Up",
+      "Shoulder & Up",
+      "Neck & Up"
+    ]
+  }
+];
+
+const defaultServices = defaultServiceGroups.flatMap((group) => group.services);
 
 const defaultStaff = [
   { id: "any", name: "Any available tech" },
@@ -47,13 +109,35 @@ const defaultStaff = [
   { id: "rumi", name: "Rumi" }
 ];
 
-let config = { services: defaultServices, staff: defaultStaff };
+let config = { services: defaultServices, serviceGroups: defaultServiceGroups, staff: defaultStaff };
 let serviceMenuOpen = false;
 let staffMenuOpen = false;
 let pendingCancel = null;
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function timeToMinutes(value) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function currentMinutes() {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+function isPastDate(value) {
+  return value < todayIso();
+}
+
+function isPastSlot(date, time) {
+  return date === todayIso() && timeToMinutes(time) <= currentMinutes();
 }
 
 function displayTime(value) {
@@ -155,13 +239,25 @@ function validateContactFields() {
 
 function renderServiceOptions(filter = "") {
   const normalizedFilter = filter.trim().toLowerCase();
-  const sourceServices = config.services.length ? config.services : defaultServices;
-  const services = sourceServices
-    .filter((service) => service.toLowerCase().includes(normalizedFilter))
-    .sort((a, b) => a.localeCompare(b));
+  const sourceGroups = config.serviceGroups?.length
+    ? config.serviceGroups
+    : [{ name: "Services", services: config.services.length ? config.services : defaultServices }];
+  const groups = sourceGroups
+    .map((group) => ({
+      ...group,
+      services: group.services.filter((service) => service.toLowerCase().includes(normalizedFilter))
+    }))
+    .filter((group) => group.services.length);
 
-  serviceOptions.innerHTML = services.length
-    ? services.map((service) => `<button type="button" role="option" data-service="${service}">${service}</button>`).join("")
+  serviceOptions.innerHTML = groups.length
+    ? groups.map((group) => `
+        <div class="search-select-group" role="presentation">
+          <p>${escapeHtml(group.name)}</p>
+          ${group.services.map((service) => `
+            <button type="button" role="option" data-service="${escapeHtml(service)}">${escapeHtml(service)}</button>
+          `).join("")}
+        </div>
+      `).join("")
     : '<p class="search-select-empty">No matching services</p>';
 }
 
@@ -201,6 +297,7 @@ async function loadConfig() {
   const serverConfig = await response.json();
   config = {
     services: serverConfig.services?.length ? serverConfig.services : defaultServices,
+    serviceGroups: serverConfig.serviceGroups?.length ? serverConfig.serviceGroups : defaultServiceGroups,
     staff: serverConfig.staff?.length ? serverConfig.staff : defaultStaff
   };
 
@@ -229,6 +326,12 @@ async function loadAvailability() {
     return;
   }
 
+  if (isPastDate(date)) {
+    timeSlots.innerHTML = '<p class="slot-empty">Please choose today or a future date.</p>';
+    slotHelper.textContent = "Past dates are closed for online booking.";
+    return;
+  }
+
   const response = await fetch(`/api/availability?date=${encodeURIComponent(date)}&staffId=${encodeURIComponent(staffId)}`);
   const data = await response.json();
   const availableSlots = data.slots || [];
@@ -239,7 +342,7 @@ async function loadAvailability() {
   }
 
   timeSlots.innerHTML = availableSlots.map((slot) => {
-    const disabled = slot.available ? "" : "disabled";
+    const disabled = slot.available && !isPastSlot(date, slot.time) ? "" : "disabled";
     return `<button class="time-slot" type="button" data-time="${slot.time}" ${disabled}>${displayTime(slot.time)}</button>`;
   }).join("");
 
@@ -248,7 +351,7 @@ async function loadAvailability() {
     ? "any available tech"
     : selectedStaff.name;
 
-  slotHelper.textContent = availableSlots.some((slot) => slot.available)
+  slotHelper.textContent = availableSlots.some((slot) => slot.available && !isPastSlot(date, slot.time))
     ? `Showing openings for ${staffLabel}.`
     : `No openings for ${staffLabel} on this date.`;
 }
@@ -401,6 +504,12 @@ form?.addEventListener("submit", async (event) => {
 
   if (!selectedTime.value) {
     setStatus("Please choose an available appointment time.", "error");
+    return;
+  }
+
+  if (isPastDate(dateInput.value) || isPastSlot(dateInput.value, selectedTime.value)) {
+    setStatus("That appointment time has already passed. Please choose a later time.", "error");
+    await loadAvailability();
     return;
   }
 

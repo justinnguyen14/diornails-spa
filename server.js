@@ -21,17 +21,79 @@ const staff = [
 
 const bookableStaff = nailTechs;
 
-const services = [
-  "Manicure Gel and Pedicure Gel",
-  "Manicure Gel and Pedicure Regular",
-  "Manicure Gel",
-  "Manicure Regular",
-  "Pedicure and Manicure and Regular",
-  "Pedicure Regular",
-  "Spa Pedicure with Gel Color",
-  "Spa Pedicure Volcano",
-  "Pedicure with Gel Color"
-].sort((a, b) => a.localeCompare(b));
+const serviceGroups = [
+  {
+    name: "Manicure",
+    services: [
+      "Manicure Gel",
+      "Manicure Regular",
+      "Manicure Gel and Pedicure Gel",
+      "Pedicure and Manicure and Regular",
+      "Manicure Gel and Pedicure Regular"
+    ]
+  },
+  {
+    name: "Pedicure",
+    services: [
+      "Pedicure Regular",
+      "Pedicure with Gel Color",
+      "Spa Pedicure with Gel Color",
+      "Spa Pedicure Volcano"
+    ]
+  },
+  {
+    name: "Nail Services",
+    services: [
+      "Acrylic/Hard Gel Nail Removal + Manicure Gel Color",
+      "Full Set Gel",
+      "Crystal Gel Full Set Pink & White",
+      "Full Set Pink & White Acrylic",
+      "Full Set Acrylic Solar",
+      "Full Set Acrylic French",
+      "Fill in Pink & White Gel",
+      "Fill In Gel French",
+      "Fill in Gel Pink Only",
+      "Fill In Gel & Gel Colors",
+      "Fill in Acrylic",
+      "Acrylic Fill Pink & White",
+      "Polish Change Nail Color",
+      "Polish Change Toe Nails Regular",
+      "Polish Change Nail Gel Color",
+      "Polish Change Toe Gel Color",
+      "Nail Repair and Up",
+      "Nails Removal",
+      "Nails Cut and Up",
+      "French",
+      "Callus Removal",
+      "Airbrush Brush & Up"
+    ]
+  },
+  {
+    name: "Waxing",
+    services: [
+      "Eyebrow Wax",
+      "Lip Wax",
+      "Chin Wax",
+      "Face Side Wax",
+      "Full Face",
+      "Half Arm",
+      "Full Arm",
+      "Under Arm",
+      "Stomach Line",
+      "Full Stomach",
+      "Half Leg",
+      "Full Leg",
+      "Bikini",
+      "Bikini & Thigh",
+      "Chest & Up",
+      "Back & Up",
+      "Shoulder & Up",
+      "Neck & Up"
+    ]
+  }
+];
+
+const services = serviceGroups.flatMap((group) => group.services);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -223,6 +285,10 @@ function isPastSlot(dateString, time) {
   return dateString === localTodayIso() && timeToMinutes(time) <= currentMinutes();
 }
 
+function isPastDate(dateString) {
+  return dateString < localTodayIso();
+}
+
 function slotsForDate(dateString) {
   const { open, close } = getHours(dateString);
   const start = timeToMinutes(open);
@@ -243,7 +309,7 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
 function isStaffAvailable(bookings, staffId, date, time, durationMinutes = 60) {
   const worker = bookableStaff.find((person) => person.id === staffId);
 
-  if (isPastSlot(date, time)) {
+  if (isPastDate(date) || isPastSlot(date, time)) {
     return false;
   }
 
@@ -305,6 +371,10 @@ function validateBooking(input) {
 
   if (phoneDigits(input.phone).length !== 10) {
     return "Please enter a full 10 digit phone number.";
+  }
+
+  if (isPastDate(input.date)) {
+    return "Please choose today or a future date.";
   }
 
   if (!slotsForDate(input.date).includes(input.time)) {
@@ -559,7 +629,7 @@ async function handleApi(req, res, pathname, searchParams) {
       ...person,
       workDays: schedule.weekly?.[person.id] || person.workDays || []
     }));
-    sendJson(res, 200, { staff: scheduledStaff, services });
+    sendJson(res, 200, { staff: scheduledStaff, services, serviceGroups });
     return;
   }
 

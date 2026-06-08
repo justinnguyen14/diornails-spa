@@ -19,6 +19,17 @@ let selectedBookingId = "";
 let scheduleData = { weekly: {}, overrides: {} };
 let pendingStaffCancel = null;
 
+const workerPalette = [
+  { bg: "#ffe4e6", border: "#fb7185", ink: "#7f1d1d" },
+  { bg: "#ffedd5", border: "#fb923c", ink: "#7c2d12" },
+  { bg: "#fef9c3", border: "#eab308", ink: "#713f12" },
+  { bg: "#dcfce7", border: "#4ade80", ink: "#14532d" },
+  { bg: "#dbeafe", border: "#60a5fa", ink: "#1e3a8a" },
+  { bg: "#ede9fe", border: "#a78bfa", ink: "#4c1d95" },
+  { bg: "#fce7f3", border: "#f472b6", ink: "#831843" },
+  { bg: "#cffafe", border: "#22d3ee", ink: "#164e63" }
+];
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -62,6 +73,16 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function workerColor(staffId) {
+  const index = Math.max(0, staff.findIndex((person) => person.id === staffId));
+  return workerPalette[index % workerPalette.length];
+}
+
+function workerColorStyle(staffId) {
+  const color = workerColor(staffId);
+  return `--event-bg: ${color.bg}; --event-border: ${color.border}; --event-ink: ${color.ink};`;
 }
 
 function getHours(dateString) {
@@ -233,7 +254,7 @@ function renderScheduleEvent(booking, open, compact = false) {
   return `
     <button
       class="${eventClass}"
-      style="--event-start: ${Math.max(0, start - open)}; --event-duration: ${duration};"
+      style="--event-start: ${Math.max(0, start - open)}; --event-duration: ${duration}; ${workerColorStyle(booking.staffId)}"
       title="${escapeHtml(`${booking.customerName} - ${booking.service}`)}"
       type="button"
       data-booking-id="${escapeHtml(booking.id)}"
