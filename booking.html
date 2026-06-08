@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Book Appointment | Dior Nails & Spa</title>
+    <meta
+      name="description"
+      content="Book a Dior Nails & Spa appointment online with your preferred nail tech or any available tech."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="app-page">
+    <header class="site-header" aria-label="Booking navigation">
+      <a class="brand" href="index.html" aria-label="Dior Nails home">
+        <span>Dior</span><strong>Nails</strong>
+      </a>
+      <nav class="nav-links app-nav-links" aria-label="Booking menu">
+        <a href="index.html#services">Services</a>
+        <a href="staff.html">Staff Portal</a>
+      </nav>
+      <a class="button button-small" href="tel:+18622583070">Call Salon</a>
+    </header>
+
+    <main class="booking-app-shell">
+      <section class="booking-hero" aria-labelledby="booking-page-title">
+        <div>
+          <h1 id="booking-page-title">Book your appointment</h1>
+          <p>
+            Choose your service, preferred nail tech, and arrival time. Appointments reserve a one-hour
+            salon block while we finalize detailed service timing.
+          </p>
+        </div>
+        <div class="booking-hero-panel" aria-label="Salon hours">
+          <span>Today and future dates</span>
+          <strong id="selected-day-hours">Today</strong>
+          <p>Mon-Fri 9 AM-7:30 PM<br />Sat 9 AM-7 PM<br />Sun 10 AM-5 PM</p>
+        </div>
+      </section>
+
+      <section class="appointment-layout" aria-label="Appointment booking form">
+        <form class="appointment-form" id="appointment-form">
+          <div class="form-section">
+            <h2>Your information</h2>
+            <label>
+              <span>Full name</span>
+              <input name="customerName" autocomplete="name" required />
+            </label>
+            <div class="form-grid">
+              <label>
+                <span>Email</span>
+                <input
+                  name="email"
+                  type="email"
+                  autocomplete="email"
+                  placeholder="name@example.com"
+                  title="Enter a valid email address, like name@example.com"
+                  required
+                />
+              </label>
+              <label>
+                <span>Phone</span>
+                <input
+                  name="phone"
+                  type="tel"
+                  inputmode="tel"
+                  autocomplete="tel"
+                  placeholder="10 digit phone number"
+                  pattern="\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}"
+                  maxlength="14"
+                  title="Enter a full 10 digit phone number."
+                  required
+                />
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h2>Appointment details</h2>
+            <label>
+              <span>Service</span>
+              <div class="search-select" id="service-search">
+                <input
+                  name="service"
+                  id="service-input"
+                  autocomplete="off"
+                  placeholder="Choose or search service"
+                  role="combobox"
+                  aria-controls="service-options"
+                  aria-expanded="false"
+                  required
+                />
+                <div class="search-select-menu" id="service-options" role="listbox"></div>
+              </div>
+            </label>
+            <div class="form-grid">
+              <label>
+                <span>Nail tech</span>
+                <div class="search-select" id="staff-search">
+                  <input
+                    id="staff-input"
+                    autocomplete="off"
+                    placeholder="Choose or search nail tech"
+                    role="combobox"
+                    aria-controls="staff-options"
+                    aria-expanded="false"
+                  />
+                  <input type="hidden" name="staffId" id="staff-id" value="any" />
+                  <div class="search-select-menu" id="staff-options" role="listbox"></div>
+                </div>
+              </label>
+              <label>
+                <span>Date</span>
+                <input name="date" id="date-input" type="date" required />
+              </label>
+            </div>
+            <label>
+              <span>Notes</span>
+              <textarea name="notes" rows="4" placeholder="Optional: nail art idea, repair details, special requests"></textarea>
+            </label>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-heading">
+              <h2>Available times</h2>
+              <p id="slot-helper">Pick a date and nail tech to see times.</p>
+            </div>
+            <div class="time-slots" id="time-slots" aria-live="polite"></div>
+            <input type="hidden" name="time" id="selected-time" required />
+          </div>
+
+          <button class="button booking-submit" type="submit">Confirm Appointment</button>
+          <p class="form-status" id="booking-status" role="status"></p>
+        </form>
+
+        <aside class="appointment-summary" aria-label="Appointment summary">
+          <h2>Reservation summary</h2>
+          <dl>
+            <div>
+              <dt>Service</dt>
+              <dd id="summary-service">Choose a service</dd>
+            </div>
+            <div>
+              <dt>Tech</dt>
+              <dd id="summary-staff">Any available tech</dd>
+            </div>
+            <div>
+              <dt>Date</dt>
+              <dd id="summary-date">Choose a date</dd>
+            </div>
+            <div>
+              <dt>Time</dt>
+              <dd id="summary-time">Choose a time</dd>
+            </div>
+          </dl>
+          <p>
+            You will see a confirmation after booking. The system can send email and text confirmations
+            when the salon notification accounts are connected.
+          </p>
+        </aside>
+      </section>
+
+      <section class="confirmation-panel is-hidden" id="confirmation-panel" aria-live="polite">
+        <h2>Appointment confirmed</h2>
+        <p id="confirmation-copy"></p>
+        <div class="booking-actions">
+          <a class="button" href="booking.html">Book Another</a>
+          <a class="button button-secondary" href="index.html">Back to Website</a>
+        </div>
+      </section>
+    </main>
+
+    <script src="booking.js?v=13"></script>
+  </body>
+</html>

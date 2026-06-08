@@ -1,0 +1,14 @@
+{
+  "name": "diornails-spa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dior Nails & Spa website with booking and staff calendar portal.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test:email": "node test-resend-email.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

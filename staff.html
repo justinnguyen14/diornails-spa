@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Staff Portal | Dior Nails & Spa</title>
+    <meta name="description" content="Dior Nails & Spa staff calendar portal." />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="app-page staff-page">
+    <header class="site-header" aria-label="Staff portal navigation">
+      <a class="brand" href="index.html" aria-label="Dior Nails home">
+        <span>Dior</span><strong>Nails</strong>
+      </a>
+      <nav class="nav-links app-nav-links" aria-label="Staff menu">
+        <a href="booking.html">Customer Booking</a>
+        <a href="index.html">Website</a>
+      </nav>
+      <a class="button button-small" href="tel:+18622583070">Call Salon</a>
+    </header>
+
+    <main class="staff-shell">
+      <section class="portal-login" id="portal-login" aria-labelledby="portal-login-title">
+        <h1 id="portal-login-title">Salon staff portal</h1>
+        <p>Enter the salon PIN to view appointments and worker calendars.</p>
+        <form id="pin-form" class="pin-form">
+          <label>
+            <span>Portal PIN</span>
+            <input name="pin" type="password" inputmode="numeric" autocomplete="current-password" required />
+          </label>
+          <button class="button" type="submit">Open Calendar</button>
+        </form>
+        <p class="form-status" id="pin-status" role="status"></p>
+      </section>
+
+      <section class="staff-dashboard is-hidden" id="staff-dashboard">
+        <div class="staff-dashboard-head">
+          <div>
+            <h1>Salon calendar</h1>
+            <p>See every customer, service, phone number, and assigned nail tech.</p>
+          </div>
+          <button class="button button-secondary" type="button" id="refresh-calendar">Refresh</button>
+        </div>
+
+        <div class="calendar-toolbar" aria-label="Calendar controls">
+          <div class="segmented-control" role="group" aria-label="Calendar view">
+            <button type="button" class="is-active" data-view="day">Day</button>
+            <button type="button" data-view="week">Week</button>
+            <button type="button" data-view="month">Month</button>
+            <button type="button" data-view="manager">Manager</button>
+          </div>
+          <label>
+            <span>Worker</span>
+            <select id="calendar-staff"></select>
+          </label>
+          <label>
+            <span>Date</span>
+            <input id="calendar-date" type="date" />
+          </label>
+        </div>
+
+        <section class="calendar-summary" aria-label="Calendar summary">
+          <article>
+            <span>Appointments</span>
+            <strong id="summary-count">0</strong>
+          </article>
+          <article>
+            <span>Workers booked</span>
+            <strong id="summary-workers">0</strong>
+          </article>
+          <article>
+            <span>Selected view</span>
+            <strong id="summary-view">Day</strong>
+          </article>
+        </section>
+
+        <section class="calendar-board" id="calendar-board" aria-live="polite"></section>
+      </section>
+    </main>
+
+    <script src="staff.js?v=8"></script>
+  </body>
+</html>
