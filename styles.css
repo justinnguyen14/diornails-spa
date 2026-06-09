@@ -817,13 +817,26 @@ input[list] {
 }
 
 input[type="date"] {
-  min-width: 11rem;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 0.45rem;
+  padding-right: 0.55rem;
+  overflow: hidden;
 }
 
 .app-page input[type="date"] {
   width: 100%;
   max-width: 100%;
   min-width: 0;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-left: 0.2rem;
+  padding: 0;
 }
 
 select:focus,
@@ -2392,7 +2405,13 @@ textarea:focus {
 
   input[type="date"] {
     width: 100%;
+    max-width: 100%;
     appearance: auto;
+    border-radius: 0.45rem;
+    padding-left: 0.75rem;
+    padding-right: 0.45rem;
+    font-size: 16px;
+    line-height: 1;
   }
 
   .calendar-toolbar label,
@@ -2400,6 +2419,23 @@ textarea:focus {
   .calendar-toolbar input[type="date"] {
     width: 100%;
     max-width: 100%;
+    min-width: 0;
+  }
+
+  .form-section label:has(input[type="date"]),
+  .calendar-toolbar label:has(input[type="date"]) {
+    overflow: hidden;
+  }
+
+  input[type="date"]::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    width: 1rem;
+    height: 1rem;
+    margin-left: 0.1rem;
   }
 
   .search-select-menu {
