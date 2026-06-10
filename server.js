@@ -5,6 +5,7 @@ const { URLSearchParams } = require("url");
 
 const PORT = Number(process.env.PORT || 3000);
 const PORTAL_PIN = process.env.SALON_PORTAL_PIN || "3070";
+const SALON_TIME_ZONE = "America/New_York";
 const DATA_DIR = path.join(__dirname, "data");
 const BOOKINGS_FILE = path.join(DATA_DIR, "bookings.json");
 const SCHEDULE_FILE = path.join(DATA_DIR, "schedule.json");
@@ -401,17 +402,31 @@ function durationForService(value) {
   return service ? serviceDurations[service] : 60;
 }
 
+function salonDateParts() {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: SALON_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    })
+      .formatToParts(new Date())
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+}
+
 function localTodayIso() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const parts = salonDateParts();
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function currentMinutes() {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
+  const parts = salonDateParts();
+  return Number(parts.hour) * 60 + Number(parts.minute);
 }
 
 function isPastSlot(dateString, time) {
@@ -882,7 +897,7 @@ async function handleApi(req, res, pathname, searchParams) {
       phone: displayPhone(input.phone),
       service: "Test Appointment",
       staffName: "Kevin",
-      date: new Date().toISOString().slice(0, 10),
+      date: localTodayIso(),
       time: "09:00"
     };
 
