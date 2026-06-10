@@ -17,68 +17,65 @@
       4,
       5,
       6
+    ],
+    "kvita": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "ana": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "khrystyna": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "marta": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "oksana": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "sandra": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
     ]
   },
   "overrides": {
-    "2026-06-08": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-06-16": {
-      "kevin": true,
-      "rumi": true
-    },
     "2026-06-07": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-06-09": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-06-10": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-06-11": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-06-12": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-06-13": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-07-22": {
-      "kevin": false,
-      "rumi": true
-    },
-    "2026-07-19": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-07-20": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-07-21": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-07-23": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-07-24": {
-      "kevin": true,
-      "rumi": true
-    },
-    "2026-07-25": {
-      "kevin": true,
-      "rumi": true
+      "kevin": true
     }
   }
 }

@@ -16,19 +16,22 @@ let view = "day";
 let staff = [];
 let bookings = [];
 let selectedBookingId = "";
+let editingBookingId = "";
 let scheduleData = { weekly: {}, overrides: {} };
 let pendingStaffCancel = null;
 
-const workerPalette = [
-  { bg: "#ffe4e6", border: "#fb7185", ink: "#7f1d1d" },
-  { bg: "#ffedd5", border: "#fb923c", ink: "#7c2d12" },
-  { bg: "#fef9c3", border: "#eab308", ink: "#713f12" },
-  { bg: "#dcfce7", border: "#4ade80", ink: "#14532d" },
-  { bg: "#dbeafe", border: "#60a5fa", ink: "#1e3a8a" },
-  { bg: "#ede9fe", border: "#a78bfa", ink: "#4c1d95" },
-  { bg: "#fce7f3", border: "#f472b6", ink: "#831843" },
-  { bg: "#cffafe", border: "#22d3ee", ink: "#164e63" }
-];
+const workerColorMap = {
+  kevin: { bg: "#ffe4e6", border: "#fb7185", ink: "#7f1d1d" },
+  rumi: { bg: "#ffedd5", border: "#fb923c", ink: "#7c2d12" },
+  kvita: { bg: "#fef9c3", border: "#eab308", ink: "#713f12" },
+  ana: { bg: "#dcfce7", border: "#4ade80", ink: "#14532d" },
+  khrystyna: { bg: "#dbeafe", border: "#60a5fa", ink: "#1e3a8a" },
+  marta: { bg: "#ede9fe", border: "#a78bfa", ink: "#4c1d95" },
+  oksana: { bg: "#fce7f3", border: "#f472b6", ink: "#831843" },
+  sandra: { bg: "#cffafe", border: "#22d3ee", ink: "#164e63" }
+};
+
+const fallbackWorkerPalette = Object.values(workerColorMap);
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -76,8 +79,12 @@ function escapeHtml(value) {
 }
 
 function workerColor(staffId) {
+  if (workerColorMap[staffId]) {
+    return workerColorMap[staffId];
+  }
+
   const index = Math.max(0, staff.findIndex((person) => person.id === staffId));
-  return workerPalette[index % workerPalette.length];
+  return fallbackWorkerPalette[index % fallbackWorkerPalette.length];
 }
 
 function workerColorStyle(staffId) {
@@ -155,7 +162,7 @@ function openStaffCancelModal(booking) {
     <div class="cancel-modal" id="staff-cancel-modal" role="dialog" aria-modal="true" aria-labelledby="staff-cancel-title">
       <div class="cancel-modal-card">
         <h2 id="staff-cancel-title">Cancel appointment?</h2>
-        <p>Are you sure you want to cancel ${escapeHtml(booking.customerName)}'s ${escapeHtml(booking.service)} appointment on ${displayDate(booking.date)} at ${displayTime(booking.time)}?</p>
+        <p>Are you sure you want to cancel ${escapeHtml(booking.customerName)}'s ${escapeHtml(booking.service)} appointment on ${displayDate(booking.date)} from ${appointmentTimeRange(booking)}?</p>
         <div class="cancel-modal-actions">
           <button class="button button-danger" type="button" id="staff-confirm-cancel">Cancel Appointment</button>
           <button class="button button-secondary" type="button" id="staff-keep-appointment">Don't Cancel</button>
@@ -215,9 +222,9 @@ async function loadBookings() {
 function bookingCard(booking) {
   const notes = booking.notes ? `<p class="calendar-notes">${booking.notes}</p>` : "";
   return `
-    <article class="appointment-card">
+    <article class="appointment-card" style="${workerColorStyle(booking.staffId)}">
       <div>
-        <strong>${displayTime(booking.time)} - ${displayTime(addHour(booking.time))}</strong>
+        <strong>${appointmentTimeRange(booking)}</strong>
         <span>${booking.staffName}</span>
       </div>
       <h3>${booking.customerName}</h3>
@@ -229,40 +236,87 @@ function bookingCard(booking) {
   `;
 }
 
-function addHour(value) {
+function addMinutes(value, minutesToAdd) {
   const [hours, minutes] = value.split(":").map(Number);
-  return `${String(hours + 1).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  const total = hours * 60 + minutes + minutesToAdd;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function appointmentEndTime(booking) {
+  return addMinutes(booking.time, Number(booking.durationMinutes || 60));
+}
+
+function appointmentTimeRange(booking) {
+  return `${displayTime(booking.time)} - ${displayTime(appointmentEndTime(booking))}`;
 }
 
 function scheduleLabels(open, close) {
-  const firstHour = Math.floor(open / 60) * 60;
+  const firstHour = Math.floor(open / 30) * 30;
   const labels = [];
 
-  for (let minutes = firstHour; minutes <= close; minutes += 60) {
+  for (let minutes = firstHour; minutes <= close; minutes += 30) {
     labels.push(minutes);
   }
 
   return labels;
 }
 
-function renderScheduleEvent(booking, open, compact = false) {
+function sameTimeBookingsFor(booking) {
+  if (!booking) {
+    return [];
+  }
+
+  return bookings
+    .filter((item) => item.date === booking.date && item.time === booking.time)
+    .sort((a, b) => a.staffName.localeCompare(b.staffName) || a.customerName.localeCompare(b.customerName));
+}
+
+function renderScheduleEvent(booking, open, compact = false, overlapCount = 1, groupedBookings = []) {
   const start = timeToMinutes(booking.time);
   const duration = Number(booking.durationMinutes || 60);
   const notes = booking.notes ? `<span class="schedule-event-notes">${escapeHtml(booking.notes)}</span>` : "";
   const eventClass = compact ? "schedule-event schedule-event-compact" : "schedule-event";
+  const countBadge = overlapCount > 1 ? `<em>${overlapCount} appointments</em>` : "";
+  const groupSummary = groupedBookings.length > 1
+    ? groupedBookings.map((item) => `${item.staffName}: ${item.customerName}`).join(" | ")
+    : "";
 
   return `
     <button
       class="${eventClass}"
       style="--event-start: ${Math.max(0, start - open)}; --event-duration: ${duration}; ${workerColorStyle(booking.staffId)}"
-      title="${escapeHtml(`${booking.customerName} - ${booking.service}`)}"
+      title="${escapeHtml(groupSummary || `${booking.customerName} - ${booking.service}`)}"
       type="button"
       data-booking-id="${escapeHtml(booking.id)}"
     >
-      <strong>${displayTime(booking.time)} ${escapeHtml(booking.customerName)}</strong>
-      <span>${escapeHtml(booking.service)}</span>
-      <span>${escapeHtml(booking.staffName)}</span>
+      <strong>${appointmentTimeRange(booking)} ${escapeHtml(booking.customerName)}${countBadge}</strong>
+      <span>${escapeHtml(overlapCount > 1 ? groupSummary : booking.service)}</span>
+      <span>${escapeHtml(overlapCount > 1 ? "Click to choose appointment" : booking.staffName)}</span>
       ${compact ? "" : `<span>${escapeHtml(booking.phone)}</span>${notes}`}
+    </button>
+  `;
+}
+
+function groupedBookingsByTime(bookingsForColumn) {
+  const groups = new Map();
+
+  bookingsForColumn.forEach((booking) => {
+    if (!groups.has(booking.time)) {
+      groups.set(booking.time, []);
+    }
+
+    groups.get(booking.time).push(booking);
+  });
+
+  return [...groups.values()].map((group) =>
+    group.sort((a, b) => a.staffName.localeCompare(b.staffName) || a.customerName.localeCompare(b.customerName))
+  );
+}
+
+function maximizeButton(label = "calendar") {
+  return `
+    <button class="calendar-maximize-button" type="button" data-maximize-calendar aria-label="Maximize ${label}">
+      <span data-maximize-label>Maximize</span>
     </button>
   `;
 }
@@ -273,8 +327,8 @@ function renderSchedule(columns, days, compact = false) {
   const totalMinutes = range.close - range.open;
 
   return `
-    <div class="schedule-calendar" style="--calendar-minutes: ${totalMinutes};">
-      <div class="schedule-header" style="grid-template-columns: 5.2rem repeat(${columns.length}, minmax(12rem, 1fr));">
+    <div class="schedule-calendar" style="--calendar-minutes: ${totalMinutes}; --schedule-columns: ${columns.length};">
+      <div class="schedule-header">
         <div class="schedule-corner"></div>
         ${columns.map((column) => `<div class="schedule-heading">${escapeHtml(column.title)}</div>`).join("")}
       </div>
@@ -284,16 +338,16 @@ function renderSchedule(columns, days, compact = false) {
             <span style="--time-offset: ${Math.max(0, minutes - range.open)};">${displayTime(minutesToTime(minutes))}</span>
           `).join("")}
         </div>
-        <div class="schedule-columns" style="grid-template-columns: repeat(${columns.length}, minmax(12rem, 1fr));">
-          ${columns.map((column) => `
-            <section class="schedule-column" aria-label="${escapeHtml(column.title)}">
-              ${labels.map((minutes) => `
-                <div class="schedule-line" style="--line-offset: ${Math.max(0, minutes - range.open)};"></div>
-              `).join("")}
-              ${column.bookings.map((booking) => renderScheduleEvent(booking, range.open, compact)).join("")}
-            </section>
-          `).join("")}
-        </div>
+        ${columns.map((column) => {
+          return `
+          <section class="schedule-column" aria-label="${escapeHtml(column.title)}">
+            ${labels.map((minutes) => `
+              <div class="schedule-line" style="--line-offset: ${Math.max(0, minutes - range.open)};"></div>
+            `).join("")}
+            ${groupedBookingsByTime(column.bookings).map((group) => renderScheduleEvent(group[0], range.open, compact, group.length, group)).join("")}
+          </section>
+        `;
+        }).join("")}
       </div>
     </div>
   `;
@@ -302,6 +356,7 @@ function renderSchedule(columns, days, compact = false) {
 function renderDay() {
   const date = calendarDate.value || todayIso();
   const selectedStaffId = calendarStaff.value || "all";
+  const isSingleWorker = selectedStaffId !== "all";
   const visibleStaff = selectedStaffId === "all"
     ? staff
     : staff.filter((person) => person.id === selectedStaffId);
@@ -314,13 +369,16 @@ function renderDay() {
   const appointmentCount = columns.reduce((sum, column) => sum + column.bookings.length, 0);
 
   calendarBoard.innerHTML = `
-    <div class="calendar-day">
+    <div class="calendar-day" data-calendar-panel>
       <div class="calendar-day-heading">
-        <h2>${displayDate(date)}</h2>
-        <span>${appointmentCount} appointment${appointmentCount === 1 ? "" : "s"}</span>
+        <div>
+          <h2>${displayDate(date)}</h2>
+          <span>${appointmentCount} appointment${appointmentCount === 1 ? "" : "s"}</span>
+        </div>
+        ${maximizeButton("day calendar")}
       </div>
       ${columns.length ? `
-        <div class="staff-calendar-layout">
+        <div class="staff-calendar-layout ${isSingleWorker ? "staff-calendar-layout-wide" : ""}">
           ${renderSchedule(columns, [date], true)}
           ${renderBookingDetails()}
         </div>
@@ -344,10 +402,13 @@ function renderWeek() {
   const appointmentCount = columns.reduce((sum, column) => sum + column.bookings.length, 0);
 
   calendarBoard.innerHTML = `
-    <div class="calendar-day">
+    <div class="calendar-day" data-calendar-panel>
       <div class="calendar-day-heading">
-        <h2>${selectedStaffName ? `${selectedStaffName}'s week` : "All workers week"}</h2>
-        <span>${appointmentCount} appointment${appointmentCount === 1 ? "" : "s"}</span>
+        <div>
+          <h2>${selectedStaffName ? `${selectedStaffName}'s week` : "All workers week"}</h2>
+          <span>${appointmentCount} appointment${appointmentCount === 1 ? "" : "s"}</span>
+        </div>
+        ${maximizeButton("week calendar")}
       </div>
       <div class="staff-calendar-layout">
         ${renderSchedule(columns, days, true)}
@@ -369,13 +430,75 @@ function renderBookingDetails() {
     `;
   }
 
+  if (editingBookingId === booking.id) {
+    return `
+      <aside class="week-detail-panel" style="${workerColorStyle(booking.staffId)}">
+        <div class="week-detail-head">
+          <div>
+            <span>${displayDate(booking.date)} at ${appointmentTimeRange(booking)}</span>
+            <h2>Edit appointment</h2>
+          </div>
+          <button class="button button-secondary button-compact" type="button" data-cancel-edit-booking>Cancel</button>
+        </div>
+        <form class="staff-edit-form" data-edit-booking-form="${escapeHtml(booking.id)}">
+          <label>
+            <span>Customer name</span>
+            <input name="customerName" value="${escapeHtml(booking.customerName)}" required />
+          </label>
+          <label>
+            <span>Service</span>
+            <input name="service" value="${escapeHtml(booking.service)}" required />
+          </label>
+          <label>
+            <span>Nail tech</span>
+            <select name="staffId">
+              ${staff.map((person) => `
+                <option value="${escapeHtml(person.id)}" ${person.id === booking.staffId ? "selected" : ""}>${escapeHtml(person.name)}</option>
+              `).join("")}
+            </select>
+          </label>
+          <div class="staff-edit-grid">
+            <label>
+              <span>Date</span>
+              <input name="date" type="date" value="${escapeHtml(booking.date)}" required />
+            </label>
+            <label>
+              <span>Time</span>
+              <input name="time" type="time" value="${escapeHtml(booking.time)}" required />
+            </label>
+          </div>
+          <label>
+            <span>Phone</span>
+            <input name="phone" value="${escapeHtml(booking.phone)}" required />
+          </label>
+          <label>
+            <span>Email</span>
+            <input name="email" type="email" value="${escapeHtml(booking.email)}" required />
+          </label>
+          <label>
+            <span>Notes</span>
+            <textarea name="notes" rows="3">${escapeHtml(booking.notes || "")}</textarea>
+          </label>
+          <button class="button" type="submit">Save Changes</button>
+          <p class="form-status" id="staff-edit-status" role="status"></p>
+        </form>
+      </aside>
+    `;
+  }
+
   return `
-    <aside class="week-detail-panel">
-      <span>${displayDate(booking.date)} at ${displayTime(booking.time)}</span>
-      <h2>${escapeHtml(booking.customerName)}</h2>
+    <aside class="week-detail-panel" style="${workerColorStyle(booking.staffId)}">
+      <div class="week-detail-head">
+        <div>
+          <span>${displayDate(booking.date)} at ${appointmentTimeRange(booking)}</span>
+          <h2>${escapeHtml(booking.customerName)}</h2>
+        </div>
+        <button class="button button-secondary button-compact" type="button" data-edit-booking="${escapeHtml(booking.id)}">Edit</button>
+      </div>
       <dl>
         <div><dt>Service</dt><dd>${escapeHtml(booking.service)}</dd></div>
         <div><dt>Nail tech</dt><dd>${escapeHtml(booking.staffName)}</dd></div>
+        <div><dt>Time reserved</dt><dd>${appointmentTimeRange(booking)} (${Number(booking.durationMinutes || 60)} minutes)</dd></div>
         <div><dt>Phone</dt><dd><a href="tel:${escapeHtml(booking.phone)}">${escapeHtml(booking.phone)}</a></dd></div>
         <div><dt>Email</dt><dd><a href="mailto:${escapeHtml(booking.email)}">${escapeHtml(booking.email)}</a></dd></div>
         <div><dt>Notes</dt><dd>${escapeHtml(booking.notes || "None")}</dd></div>
@@ -383,8 +506,39 @@ function renderBookingDetails() {
       <button class="button button-danger" type="button" data-staff-cancel-booking="${escapeHtml(booking.id)}">
         Cancel This Appointment
       </button>
+      ${renderSameTimePicker(booking)}
       <p class="form-status" id="staff-cancel-status" role="status"></p>
     </aside>
+  `;
+}
+
+function renderSameTimePicker(booking) {
+  const sameTimeBookings = sameTimeBookingsFor(booking);
+
+  if (sameTimeBookings.length <= 1) {
+    return "";
+  }
+
+  return `
+    <section class="same-time-picker" aria-label="Appointments at this time">
+      <div>
+        <strong>${sameTimeBookings.length} appointments at ${displayTime(booking.time)}</strong>
+        <span>Choose one to view details</span>
+      </div>
+      <div class="same-time-scroll">
+        ${sameTimeBookings.map((item) => `
+          <button
+            class="${item.id === booking.id ? "is-selected" : ""}"
+            type="button"
+            style="${workerColorStyle(item.staffId)}"
+            data-booking-id="${escapeHtml(item.id)}"
+          >
+            <span>${escapeHtml(item.staffName)}</span>
+            <strong>${escapeHtml(item.customerName)}</strong>
+          </button>
+        `).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -404,10 +558,13 @@ function renderMonth() {
     : staff.filter((person) => person.id === selectedStaffId);
 
   calendarBoard.innerHTML = `
-    <div class="month-calendar">
+    <div class="month-calendar" data-calendar-panel>
       <div class="month-calendar-heading">
-        <h2>${monthName}</h2>
-        <span>Employee work schedule</span>
+        <div>
+          <h2>${monthName}</h2>
+          <span>Employee work schedule</span>
+        </div>
+        ${maximizeButton("month calendar")}
       </div>
       <div class="month-weekdays">
         ${weekdays.map((weekday) => `<span>${weekday}</span>`).join("")}
@@ -426,7 +583,7 @@ function renderMonth() {
               <div class="month-date-number">${dayNumber}</div>
               <div class="month-work-schedule">
                 ${workingStaff.length
-                  ? workingStaff.map((person) => `<span>${escapeHtml(person.name)}</span>`).join("")
+                  ? workingStaff.map((person) => `<span style="${workerColorStyle(person.id)}">${escapeHtml(person.name)}</span>`).join("")
                   : "<p>Off</p>"}
               </div>
             </section>
@@ -485,7 +642,7 @@ function renderManager() {
       <div class="manager-sections">
         <section class="manager-panel">
           <h3>Weekly schedule</h3>
-          <p>Checked means this employee normally works that weekday every week.</p>
+          <p>Checked means this employee normally works that weekday every week, including future weeks.</p>
           <div class="manager-table">
             ${staff.map((person) => `
               <div class="manager-row">
@@ -510,7 +667,7 @@ function renderManager() {
 
         <section class="manager-panel">
           <h3>Selected date: ${displayDate(date)}</h3>
-          <p>Smaller date override. Checked means working this date only.</p>
+          <p>One-day exception only. Change a box here when someone is working or off on just this date.</p>
           <div class="date-override-list">
             ${staff.map((person) => `
               <label>
@@ -528,7 +685,7 @@ function renderManager() {
 
       <section class="manager-panel manager-week-panel">
         <h3>Selected week: ${displayDate(weekDates[0])} - ${displayDate(weekDates[6])}</h3>
-        <p>Use this to set or adjust a future week without changing the normal weekly schedule.</p>
+        <p>Use this for one-week exceptions. Only boxes you change here are saved as date-specific changes.</p>
         <div class="week-override-table">
           <div class="week-override-header">
             <span>Employee</span>
@@ -626,6 +783,14 @@ viewButtons.forEach((button) => {
 calendarDate.value = todayIso();
 
 calendarBoard?.addEventListener("click", async (event) => {
+  const maximizeButton = event.target.closest("[data-maximize-calendar]");
+
+  if (maximizeButton) {
+    const panel = maximizeButton.closest("[data-calendar-panel]");
+    await toggleCalendarMaximize(panel);
+    return;
+  }
+
   const saveButton = event.target.closest("#save-schedule");
 
   if (!saveButton) {
@@ -642,10 +807,16 @@ calendarBoard?.addEventListener("click", async (event) => {
     weekly[person.id] = [...document.querySelectorAll(`[data-weekly-staff="${person.id}"]:checked`)]
       .map((input) => Number(input.value));
     const dateInput = document.querySelector(`[data-date-staff="${person.id}"]`);
-    overrides[person.id] = Boolean(dateInput?.checked);
+    if (dateInput?.dataset.dirty === "true") {
+      overrides[person.id] = Boolean(dateInput.checked);
+    }
   });
 
   document.querySelectorAll("[data-week-date]").forEach((input) => {
+    if (input.dataset.dirty !== "true") {
+      return;
+    }
+
     const dateValue = input.dataset.weekDate;
     const staffId = input.dataset.weekDateStaff;
     overrideDates[dateValue] = overrideDates[dateValue] || {};
@@ -662,7 +833,11 @@ calendarBoard?.addEventListener("click", async (event) => {
         "Content-Type": "application/json",
         "X-Portal-Pin": portalPin
       },
-      body: JSON.stringify({ weekly, date, overrides, overrideDates })
+      body: JSON.stringify({
+        weekly,
+        ...(Object.keys(overrides).length ? { date, overrides } : {}),
+        ...(Object.keys(overrideDates).length ? { overrideDates } : {})
+      })
     });
     const data = await response.json();
 
@@ -683,18 +858,94 @@ calendarBoard?.addEventListener("click", async (event) => {
   }
 });
 
-calendarBoard?.addEventListener("change", async (event) => {
-  const weekInput = event.target.closest("#manager-week-date");
-
-  if (!weekInput) {
+async function toggleCalendarMaximize(panel) {
+  if (!panel) {
     return;
   }
 
-  calendarDate.value = weekInput.value || todayIso();
-  await loadBookings();
+  const fallbackPanel = document.querySelector(".is-calendar-maximized");
+
+  if (document.fullscreenElement) {
+    await document.exitFullscreen();
+    return;
+  }
+
+  if (fallbackPanel) {
+    fallbackPanel.classList.remove("is-calendar-maximized");
+    document.body.classList.remove("calendar-maximized");
+    updateMaximizeLabels();
+    return;
+  }
+
+  try {
+    if (panel.requestFullscreen) {
+      await panel.requestFullscreen();
+      return;
+    }
+  } catch (error) {
+  }
+
+  panel.classList.add("is-calendar-maximized");
+  document.body.classList.add("calendar-maximized");
+  updateMaximizeLabels();
+}
+
+function updateMaximizeLabels() {
+  const isMaximized = Boolean(document.fullscreenElement || document.querySelector(".is-calendar-maximized"));
+
+  document.querySelectorAll("[data-maximize-label]").forEach((label) => {
+    label.textContent = isMaximized ? "Exit" : "Maximize";
+  });
+}
+
+document.addEventListener("fullscreenchange", updateMaximizeLabels);
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  const fallbackPanel = document.querySelector(".is-calendar-maximized");
+
+  if (fallbackPanel) {
+    fallbackPanel.classList.remove("is-calendar-maximized");
+    document.body.classList.remove("calendar-maximized");
+    updateMaximizeLabels();
+  }
+});
+
+calendarBoard?.addEventListener("change", async (event) => {
+  const weekInput = event.target.closest("#manager-week-date");
+
+  if (weekInput) {
+    calendarDate.value = weekInput.value || todayIso();
+    await loadBookings();
+    return;
+  }
+
+  const overrideInput = event.target.closest("[data-date-staff], [data-week-date]");
+
+  if (overrideInput) {
+    overrideInput.dataset.dirty = "true";
+  }
 });
 
 calendarBoard?.addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-booking]");
+
+  if (editButton) {
+    editingBookingId = editButton.dataset.editBooking;
+    selectedBookingId = editingBookingId;
+    renderCalendar();
+    return;
+  }
+
+  if (event.target.closest("[data-cancel-edit-booking]")) {
+    editingBookingId = "";
+    renderCalendar();
+    return;
+  }
+
   const cancelButton = event.target.closest("[data-staff-cancel-booking]");
 
   if (cancelButton) {
@@ -714,7 +965,67 @@ calendarBoard?.addEventListener("click", (event) => {
   }
 
   selectedBookingId = button.dataset.bookingId;
+  editingBookingId = "";
   renderCalendar();
+});
+
+calendarBoard?.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-edit-booking-form]");
+
+  if (!form) {
+    return;
+  }
+
+  event.preventDefault();
+  const bookingId = form.dataset.editBookingForm;
+  const formData = Object.fromEntries(new FormData(form).entries());
+  const selectedStaff = staff.find((person) => person.id === formData.staffId);
+  const nameParts = formData.customerName.trim().split(/\s+/).filter(Boolean);
+  const status = form.querySelector("#staff-edit-status");
+  const submitButton = form.querySelector("button[type='submit']");
+
+  submitButton.disabled = true;
+  submitButton.textContent = "Saving...";
+  status.textContent = "";
+
+  try {
+    const response = await fetch(`/api/bookings/${bookingId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Portal-Pin": portalPin
+      },
+      body: JSON.stringify({
+        customerName: formData.customerName.trim(),
+        firstName: nameParts[0] || "",
+        lastName: nameParts.at(-1) || "",
+        service: formData.service.trim(),
+        staffId: formData.staffId,
+        staffName: selectedStaff?.name || formData.staffId,
+        date: formData.date,
+        time: formData.time,
+        phone: formData.phone.trim(),
+        email: formData.email.trim().toLowerCase(),
+        notes: formData.notes.trim()
+      })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to save appointment.");
+    }
+
+    editingBookingId = "";
+    selectedBookingId = bookingId;
+    await loadBookings();
+    calendarBoard.insertAdjacentHTML("afterbegin", '<p class="form-status staff-action-status" role="status">Appointment updated.</p>');
+  } catch (error) {
+    status.textContent = error.message;
+    status.dataset.type = "error";
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Save Changes";
+  }
 });
 
 document.addEventListener("click", async (event) => {

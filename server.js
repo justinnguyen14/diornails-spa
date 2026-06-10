@@ -12,7 +12,8 @@ const PUBLIC_DIR = __dirname;
 
 loadEnvFile();
 
-const nailTechs = parseNailTechs(process.env.NAIL_TECHS || "Kevin");
+const defaultNailTechs = "Kevin,Rumi,Kvita,Ana,Khrystyna,Marta,Oksana,Sandra";
+const nailTechs = parseNailTechs(process.env.NAIL_TECHS || defaultNailTechs);
 
 const staff = [
   { id: "any", name: "Any available tech" },
@@ -94,6 +95,41 @@ const serviceGroups = [
 ];
 
 const services = serviceGroups.flatMap((group) => group.services);
+const waxingServices = serviceGroups.find((group) => group.name === "Waxing")?.services || [];
+const serviceDurations = Object.fromEntries([
+  ["Manicure Gel", 45],
+  ["Manicure Regular", 35],
+  ["Pedicure Regular", 45],
+  ["Spa Pedicure with Gel Color", 75],
+  ["Pedicure and Manicure and Regular", 75],
+  ["Manicure Gel and Pedicure Regular", 70],
+  ["Pedicure with Gel Color", 55],
+  ["Spa Pedicure Volcano", 75],
+  ["Manicure Gel and Pedicure Gel", 75],
+  ["Acrylic/Hard Gel Nail Removal + Manicure Gel Color", 60],
+  ["Crystal Gel Full Set Pink & White", 60],
+  ["Full Set Acrylic Solar", 60],
+  ["Fill in Gel Pink Only", 60],
+  ["Fill in Acrylic", 60],
+  ["Full Set Acrylic French", 60],
+  ["Full Set Gel", 60],
+  ["Full Set Pink & White Acrylic", 60],
+  ["Fill in Pink & White Gel", 60],
+  ["Fill In Gel & Gel Colors", 60],
+  ["Fill In Gel French", 60],
+  ["Acrylic Fill Pink & White", 60],
+  ["Polish Change Nail Color", 30],
+  ["Polish Change Nail Gel Color", 30],
+  ["Nail Repair and Up", 5],
+  ["Nails Cut and Up", 5],
+  ["Callus Removal", 5],
+  ["Polish Change Toe Nails Regular", 30],
+  ["Polish Change Toe Gel Color", 30],
+  ["Nails Removal", 15],
+  ["French", 5],
+  ["Airbrush Brush & Up", 5],
+  ...waxingServices.map((service) => [service, 15])
+]);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -214,6 +250,73 @@ function writeSchedule(schedule) {
   fs.writeFileSync(SCHEDULE_FILE, `${JSON.stringify(schedule, null, 2)}\n`);
 }
 
+function scheduleDay(dateString) {
+  return new Date(`${dateString}T12:00:00`).getDay();
+}
+
+function weeklyScheduleFor(schedule, person) {
+  return schedule.weekly?.[person.id] || person.workDays || [];
+}
+
+function isWeeklyStaffWorking(schedule, person, dateString) {
+  return weeklyScheduleFor(schedule, person).includes(scheduleDay(dateString));
+}
+
+function setScheduleOverride(schedule, dateString, staffId, isWorking, explicitOverrideKeys) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return;
+  }
+
+  const person = bookableStaff.find((worker) => worker.id === staffId);
+
+  if (!person || typeof isWorking !== "boolean") {
+    return;
+  }
+
+  const weeklyValue = isWeeklyStaffWorking(schedule, person, dateString);
+  schedule.overrides[dateString] = schedule.overrides[dateString] || {};
+  explicitOverrideKeys.add(`${dateString}:${staffId}`);
+
+  if (isWorking === weeklyValue) {
+    delete schedule.overrides[dateString][staffId];
+  } else {
+    schedule.overrides[dateString][staffId] = isWorking;
+  }
+
+  if (Object.keys(schedule.overrides[dateString]).length === 0) {
+    delete schedule.overrides[dateString];
+  }
+}
+
+function pruneScheduleOverrides(schedule, changedWeeklyDaysByStaff = {}, explicitOverrideKeys = new Set()) {
+  Object.entries(schedule.overrides || {}).forEach(([dateString, overrides]) => {
+    if (!overrides || typeof overrides !== "object") {
+      delete schedule.overrides[dateString];
+      return;
+    }
+
+    const day = scheduleDay(dateString);
+
+    bookableStaff.forEach((person) => {
+      const overrideKey = `${dateString}:${person.id}`;
+      const changedDays = changedWeeklyDaysByStaff[person.id] || new Set();
+      const weeklyValue = isWeeklyStaffWorking(schedule, person, dateString);
+
+      if (
+        typeof overrides[person.id] !== "boolean" ||
+        overrides[person.id] === weeklyValue ||
+        (changedDays.has(day) && !explicitOverrideKeys.has(overrideKey))
+      ) {
+        delete overrides[person.id];
+      }
+    });
+
+    if (Object.keys(overrides).length === 0) {
+      delete schedule.overrides[dateString];
+    }
+  });
+}
+
 function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
@@ -268,6 +371,36 @@ function minutesToTime(value) {
   return `${hours}:${minutes}`;
 }
 
+function displayTime(value) {
+  const [hours, minutes] = value.split(":").map(Number);
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const hour = hours % 12 || 12;
+  return `${hour}:${String(minutes).padStart(2, "0")} ${suffix}`;
+}
+
+function addMinutes(value, minutesToAdd) {
+  return minutesToTime(timeToMinutes(value) + minutesToAdd);
+}
+
+function appointmentTimeRange(booking) {
+  const durationMinutes = Number(booking.durationMinutes || durationForService(booking.service));
+  return `${displayTime(booking.time)} - ${displayTime(addMinutes(booking.time, durationMinutes))}`;
+}
+
+function normalizeServiceName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function canonicalServiceName(value) {
+  const normalized = normalizeServiceName(value);
+  return services.find((service) => normalizeServiceName(service) === normalized) || "";
+}
+
+function durationForService(value) {
+  const service = canonicalServiceName(value);
+  return service ? serviceDurations[service] : 60;
+}
+
 function localTodayIso() {
   const now = new Date();
   const year = now.getFullYear();
@@ -289,13 +422,13 @@ function isPastDate(dateString) {
   return dateString < localTodayIso();
 }
 
-function slotsForDate(dateString) {
+function slotsForDate(dateString, durationMinutes = 60) {
   const { open, close } = getHours(dateString);
   const start = timeToMinutes(open);
-  const end = timeToMinutes(close) - 60;
+  const end = timeToMinutes(close) - durationMinutes;
   const slots = [];
 
-  for (let minutes = start; minutes <= end; minutes += 60) {
+  for (let minutes = start; minutes <= end; minutes += 15) {
     slots.push(minutesToTime(minutes));
   }
 
@@ -331,29 +464,37 @@ function isStaffAvailable(bookings, staffId, date, time, durationMinutes = 60) {
   });
 }
 
+function isStaffAvailableForBooking(bookings, bookingId, staffId, date, time, durationMinutes) {
+  return isStaffAvailable(
+    bookings.filter((booking) => booking.id !== bookingId),
+    staffId,
+    date,
+    time,
+    durationMinutes
+  );
+}
+
 function isStaffWorking(worker, dateString) {
   const schedule = readSchedule();
   return isStaffWorkingFromSchedule(worker, dateString, schedule);
 }
 
 function isStaffWorkingFromSchedule(worker, dateString, schedule) {
-  const day = new Date(`${dateString}T12:00:00`).getDay();
   const override = schedule.overrides?.[dateString]?.[worker.id];
 
   if (typeof override === "boolean") {
     return override;
   }
 
-  const weeklyDays = schedule.weekly?.[worker.id] || worker.workDays;
-  return weeklyDays.includes(day);
+  return isWeeklyStaffWorking(schedule, worker, dateString);
 }
 
-function assignStaff(bookings, requestedStaffId, date, time) {
+function assignStaff(bookings, requestedStaffId, date, time, durationMinutes) {
   if (requestedStaffId && requestedStaffId !== "any") {
-    return isStaffAvailable(bookings, requestedStaffId, date, time) ? requestedStaffId : null;
+    return isStaffAvailable(bookings, requestedStaffId, date, time, durationMinutes) ? requestedStaffId : null;
   }
 
-  const worker = bookableStaff.find((person) => isStaffAvailable(bookings, person.id, date, time));
+  const worker = bookableStaff.find((person) => isStaffAvailable(bookings, person.id, date, time, durationMinutes));
   return worker?.id || null;
 }
 
@@ -373,11 +514,17 @@ function validateBooking(input) {
     return "Please enter a full 10 digit phone number.";
   }
 
+  const service = canonicalServiceName(input.service);
+
+  if (!service || !serviceDurations[service]) {
+    return "Please choose a valid service.";
+  }
+
   if (isPastDate(input.date)) {
     return "Please choose today or a future date.";
   }
 
-  if (!slotsForDate(input.date).includes(input.time)) {
+  if (!slotsForDate(input.date, serviceDurations[service]).includes(input.time)) {
     return "That appointment time is outside salon hours.";
   }
 
@@ -417,7 +564,8 @@ function displayPhone(value) {
 
 async function notifyCustomer(booking) {
   const formattedDate = displayDate(booking.date);
-  const summary = `Dior Nails & Spa appointment confirmed for ${booking.customerName} on ${formattedDate} at ${booking.time} with ${booking.staffName}. Service: ${booking.service}. Questions? Call (862) 258-3070.`;
+  const timeRange = appointmentTimeRange(booking);
+  const summary = `Dior Nails & Spa appointment confirmed for ${booking.customerName} on ${formattedDate} from ${timeRange} with ${booking.staffName}. Service: ${booking.service}. Questions? Call (862) 258-3070.`;
   const emailHtml = `
     <div style="font-family: Arial, sans-serif; color: #111014; line-height: 1.6;">
       <h1 style="color: #967036;">Your Dior Nails appointment is confirmed</h1>
@@ -427,7 +575,8 @@ async function notifyCustomer(booking) {
         <tr><td style="padding: 6px 14px 6px 0;"><strong>Service</strong></td><td>${escapeHtml(booking.service)}</td></tr>
         <tr><td style="padding: 6px 14px 6px 0;"><strong>Nail tech</strong></td><td>${escapeHtml(booking.staffName)}</td></tr>
         <tr><td style="padding: 6px 14px 6px 0;"><strong>Date</strong></td><td>${escapeHtml(formattedDate)}</td></tr>
-        <tr><td style="padding: 6px 14px 6px 0;"><strong>Time</strong></td><td>${escapeHtml(booking.time)}</td></tr>
+        <tr><td style="padding: 6px 14px 6px 0;"><strong>Time</strong></td><td>${escapeHtml(timeRange)}</td></tr>
+        <tr><td style="padding: 6px 14px 6px 0;"><strong>Reserved</strong></td><td>${Number(booking.durationMinutes || durationForService(booking.service))} minutes</td></tr>
       </table>
       <p>Questions? Call Dior Nails &amp; Spa at <a href="tel:+18622583070">(862) 258-3070</a>.</p>
     </div>
@@ -493,7 +642,8 @@ async function notifyCustomer(booking) {
 
 async function notifyCancellation(booking, cancelledBy = "the salon") {
   const formattedDate = displayDate(booking.date);
-  const summary = `Dior Nails & Spa appointment cancelled for ${booking.customerName} on ${formattedDate} at ${booking.time} with ${booking.staffName}. Service: ${booking.service}. Cancelled by ${cancelledBy}. Questions? Call (862) 258-3070.`;
+  const timeRange = appointmentTimeRange(booking);
+  const summary = `Dior Nails & Spa appointment cancelled for ${booking.customerName} on ${formattedDate} from ${timeRange} with ${booking.staffName}. Service: ${booking.service}. Cancelled by ${cancelledBy}. Questions? Call (862) 258-3070.`;
   const emailHtml = `
     <div style="font-family: Arial, sans-serif; color: #111014; line-height: 1.6;">
       <h1 style="color: #967036;">Your Dior Nails appointment was cancelled</h1>
@@ -503,7 +653,8 @@ async function notifyCancellation(booking, cancelledBy = "the salon") {
         <tr><td style="padding: 6px 14px 6px 0;"><strong>Service</strong></td><td>${escapeHtml(booking.service)}</td></tr>
         <tr><td style="padding: 6px 14px 6px 0;"><strong>Nail tech</strong></td><td>${escapeHtml(booking.staffName)}</td></tr>
         <tr><td style="padding: 6px 14px 6px 0;"><strong>Date</strong></td><td>${escapeHtml(formattedDate)}</td></tr>
-        <tr><td style="padding: 6px 14px 6px 0;"><strong>Time</strong></td><td>${escapeHtml(booking.time)}</td></tr>
+        <tr><td style="padding: 6px 14px 6px 0;"><strong>Time</strong></td><td>${escapeHtml(timeRange)}</td></tr>
+        <tr><td style="padding: 6px 14px 6px 0;"><strong>Reserved</strong></td><td>${Number(booking.durationMinutes || durationForService(booking.service))} minutes</td></tr>
       </table>
       <p>Questions? Call Dior Nails &amp; Spa at <a href="tel:+18622583070">(862) 258-3070</a>.</p>
     </div>
@@ -629,7 +780,7 @@ async function handleApi(req, res, pathname, searchParams) {
       ...person,
       workDays: schedule.weekly?.[person.id] || person.workDays || []
     }));
-    sendJson(res, 200, { staff: scheduledStaff, services, serviceGroups });
+    sendJson(res, 200, { staff: scheduledStaff, services, serviceGroups, serviceDurations });
     return;
   }
 
@@ -649,23 +800,30 @@ async function handleApi(req, res, pathname, searchParams) {
 
     const input = await readJson(req);
     const schedule = readSchedule();
+    const changedWeeklyDaysByStaff = {};
+    const explicitOverrideKeys = new Set();
 
     if (input.weekly && typeof input.weekly === "object") {
       bookableStaff.forEach((person) => {
         if (Array.isArray(input.weekly[person.id])) {
-          schedule.weekly[person.id] = input.weekly[person.id]
+          const previousDays = new Set(weeklyScheduleFor(schedule, person));
+          const nextDays = input.weekly[person.id]
             .map(Number)
             .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+          const nextDaySet = new Set(nextDays);
+
+          changedWeeklyDaysByStaff[person.id] = new Set(
+            [0, 1, 2, 3, 4, 5, 6].filter((day) => previousDays.has(day) !== nextDaySet.has(day))
+          );
+          schedule.weekly[person.id] = nextDays;
         }
       });
     }
 
     if (input.date && input.overrides && typeof input.overrides === "object") {
-      schedule.overrides[input.date] = schedule.overrides[input.date] || {};
-
       bookableStaff.forEach((person) => {
         if (typeof input.overrides[person.id] === "boolean") {
-          schedule.overrides[input.date][person.id] = input.overrides[person.id];
+          setScheduleOverride(schedule, input.date, person.id, input.overrides[person.id], explicitOverrideKeys);
         }
       });
     }
@@ -675,17 +833,15 @@ async function handleApi(req, res, pathname, searchParams) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !overrides || typeof overrides !== "object") {
           return;
         }
-
-        schedule.overrides[date] = schedule.overrides[date] || {};
-
         bookableStaff.forEach((person) => {
           if (typeof overrides[person.id] === "boolean") {
-            schedule.overrides[date][person.id] = overrides[person.id];
+            setScheduleOverride(schedule, date, person.id, overrides[person.id], explicitOverrideKeys);
           }
         });
       });
     }
 
+    pruneScheduleOverrides(schedule, changedWeeklyDaysByStaff, explicitOverrideKeys);
     writeSchedule(schedule);
     sendJson(res, 200, { schedule });
     return;
@@ -741,6 +897,8 @@ async function handleApi(req, res, pathname, searchParams) {
   if (req.method === "GET" && pathname === "/api/availability") {
     const date = searchParams.get("date");
     const staffId = searchParams.get("staffId") || "any";
+    const service = canonicalServiceName(searchParams.get("service") || "");
+    const durationMinutes = durationForService(service);
 
     if (!date) {
       sendJson(res, 400, { error: "Date required." });
@@ -749,23 +907,24 @@ async function handleApi(req, res, pathname, searchParams) {
 
     const bookings = readBookings();
     const schedule = readSchedule();
-    const slots = slotsForDate(date).map((time) => {
+    const slots = slotsForDate(date, durationMinutes).map((time) => {
       const workingStaff = bookableStaff.filter((person) => isStaffWorkingFromSchedule(person, date, schedule));
-      const availableStaff = workingStaff.filter((person) => isStaffAvailable(bookings, person.id, date, time));
+      const availableStaff = workingStaff.filter((person) => isStaffAvailable(bookings, person.id, date, time, durationMinutes));
       const selectedStaff = bookableStaff.find((person) => person.id === staffId);
       const available = selectedStaff
-        ? isStaffAvailable(bookings, selectedStaff.id, date, time)
+        ? isStaffAvailable(bookings, selectedStaff.id, date, time, durationMinutes)
         : availableStaff.length > 0;
 
       return {
         time,
         available,
+        durationMinutes,
         staffId,
         availableStaffIds: availableStaff.map((person) => person.id)
       };
     });
 
-    sendJson(res, 200, { date, slots });
+    sendJson(res, 200, { date, service, durationMinutes, slots });
     return;
   }
 
@@ -780,7 +939,9 @@ async function handleApi(req, res, pathname, searchParams) {
       }
 
       const bookings = readBookings();
-      const staffId = assignStaff(bookings, input.staffId || "any", input.date, input.time);
+      const service = canonicalServiceName(input.service);
+      const durationMinutes = durationForService(service);
+      const staffId = assignStaff(bookings, input.staffId || "any", input.date, input.time, durationMinutes);
 
       if (!staffId) {
         sendJson(res, 409, { error: "That time is no longer available. Please choose another time." });
@@ -797,12 +958,12 @@ async function handleApi(req, res, pathname, searchParams) {
         customerName: `${firstName} ${lastName}`.trim(),
         email: String(input.email).trim().toLowerCase(),
         phone: displayPhone(input.phone),
-        service: String(input.service).trim(),
+        service,
         staffId,
         staffName,
         date: input.date,
         time: input.time,
-        durationMinutes: 60,
+        durationMinutes,
         notes: String(input.notes || "").trim(),
         status: "confirmed",
         createdAt: new Date().toISOString(),
@@ -952,7 +1113,39 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
-    bookings[index] = { ...bookings[index], ...input, updatedAt: new Date().toISOString() };
+    const nextBooking = { ...bookings[index], ...input };
+    const service = canonicalServiceName(nextBooking.service);
+    const staffId = nextBooking.staffId;
+    const staffName = bookableStaff.find((person) => person.id === staffId)?.name;
+    const durationMinutes = durationForService(service);
+
+    if (!service || !serviceDurations[service]) {
+      sendJson(res, 400, { error: "Please choose a valid service." });
+      return;
+    }
+
+    if (!staffName) {
+      sendJson(res, 400, { error: "Please choose a valid nail tech." });
+      return;
+    }
+
+    if (!slotsForDate(nextBooking.date, durationMinutes).includes(nextBooking.time)) {
+      sendJson(res, 400, { error: "That appointment time is outside salon hours." });
+      return;
+    }
+
+    if (!isStaffAvailableForBooking(bookings, nextBooking.id, staffId, nextBooking.date, nextBooking.time, durationMinutes)) {
+      sendJson(res, 409, { error: "That nail tech is not available for the selected time." });
+      return;
+    }
+
+    bookings[index] = {
+      ...nextBooking,
+      service,
+      staffName,
+      durationMinutes,
+      updatedAt: new Date().toISOString()
+    };
     writeBookings(bookings);
     sendJson(res, 200, { booking: bookings[index] });
     return;
