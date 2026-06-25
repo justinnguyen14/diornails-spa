@@ -27,9 +27,21 @@ Fill these values in `.env`:
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_FROM_NUMBER=+15551234567
+TWILIO_STATUS_CALLBACK_URL=
 ```
 
 Use the Twilio phone number exactly as Twilio provides it, including `+1`.
+
+For the live Render service, add the first three values under **Environment** and redeploy. The status callback URL is optional.
+
+Customer and staff booking forms include a transactional text-consent checkbox. Texts are sent only when that consent is recorded. Confirmation and cancellation messages identify Dior Nails, include the appointment details, and include `Reply STOP to opt out`.
+
+For US customer texting:
+
+- A local 10-digit Twilio number must be registered for A2P 10DLC before production use.
+- A toll-free Twilio number uses Twilio's separate toll-free verification process.
+- Twilio trial accounts can generally send only to verified recipient numbers.
+- Keep Twilio credentials only in `.env` locally and Render Environment Variables online.
 
 ## 4. Restart the salon server
 

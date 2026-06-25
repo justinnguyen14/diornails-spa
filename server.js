@@ -259,6 +259,8 @@ function upsertCustomer(input) {
     customerName: `${firstName} ${lastName}`.trim(),
     phone,
     email: String(input.email || existing.email || "").trim().toLowerCase(),
+    smsConsent: booleanValue(input.smsConsent) || Boolean(existing.smsConsent),
+    smsConsentAt: booleanValue(input.smsConsent) ? new Date().toISOString() : existing.smsConsentAt || "",
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -303,6 +305,8 @@ function syncCustomersFromBookings() {
       customerName: booking.customerName,
       phone: displayPhone(booking.phone),
       email: String(booking.email || "").trim().toLowerCase(),
+      smsConsent: Boolean(booking.smsConsent),
+      smsConsentAt: booking.smsConsentAt || "",
       createdAt: booking.createdAt || new Date().toISOString(),
       updatedAt: booking.updatedAt || booking.createdAt || new Date().toISOString()
     });
@@ -656,6 +660,10 @@ function phoneDigits(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
+function booleanValue(value) {
+  return value === true || value === "true" || value === "on" || value === 1 || value === "1";
+}
+
 function formatPhoneForSms(value) {
   const digits = phoneDigits(value);
   return digits.length === 10 ? `+1${digits}` : String(value || "").trim();
@@ -669,6 +677,86 @@ function displayPhone(value) {
   }
 
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+async function sendEmailNotification(booking, subject, summary, html) {
+  if (!booking.email) {
+    return { channel: "email", ok: false, reason: "customer_email_not_provided" };
+  }
+
+  if (!process.env.RESEND_API_KEY || !process.env.NOTIFICATION_FROM_EMAIL) {
+    return { channel: "email", ok: false, reason: "missing_email_provider" };
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: process.env.NOTIFICATION_FROM_EMAIL,
+        to: booking.email,
+        subject,
+        text: summary,
+        html
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    return {
+      channel: "email",
+      ok: response.ok,
+      status: response.status,
+      id: result.id,
+      reason: result.message || result.error
+    };
+  } catch (error) {
+    return { channel: "email", ok: false, reason: error.message || "email_request_failed" };
+  }
+}
+
+async function sendSmsNotification(booking, summary) {
+  if (!booking.smsConsent) {
+    return { channel: "sms", ok: false, reason: "customer_sms_not_consented" };
+  }
+
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM_NUMBER) {
+    return { channel: "sms", ok: false, reason: "missing_sms_provider" };
+  }
+
+  const params = new URLSearchParams({
+    From: process.env.TWILIO_FROM_NUMBER,
+    To: formatPhoneForSms(booking.phone),
+    Body: `${summary} Reply STOP to opt out.`
+  });
+
+  if (process.env.TWILIO_STATUS_CALLBACK_URL) {
+    params.set("StatusCallback", process.env.TWILIO_STATUS_CALLBACK_URL);
+  }
+
+  try {
+    const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString("base64");
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params
+    });
+    const result = await response.json().catch(() => ({}));
+    return {
+      channel: "sms",
+      ok: response.ok,
+      status: response.status,
+      id: result.sid,
+      messageStatus: result.status,
+      reason: result.message
+    };
+  } catch (error) {
+    return { channel: "sms", ok: false, reason: error.message || "sms_request_failed" };
+  }
 }
 
 async function notifyCustomer(booking) {
@@ -690,65 +778,10 @@ async function notifyCustomer(booking) {
       <p>Questions? Call Dior Nails &amp; Spa at <a href="tel:+18622583070">(862) 258-3070</a>.</p>
     </div>
   `;
-  const results = [];
-
-  if (booking.email && process.env.RESEND_API_KEY && process.env.NOTIFICATION_FROM_EMAIL) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        from: process.env.NOTIFICATION_FROM_EMAIL,
-        to: booking.email,
-        subject: "Your Dior Nails appointment is confirmed",
-        text: summary,
-        html: emailHtml
-      })
-    });
-    const result = await response.json().catch(() => ({}));
-    results.push({
-      channel: "email",
-      ok: response.ok,
-      status: response.status,
-      id: result.id,
-      reason: result.message || result.error
-    });
-  } else if (!booking.email) {
-    results.push({ channel: "email", ok: false, reason: "customer_email_not_provided" });
-  } else {
-    results.push({ channel: "email", ok: false, reason: "missing_email_provider" });
-  }
-
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER) {
-    const params = new URLSearchParams({
-      From: process.env.TWILIO_FROM_NUMBER,
-      To: formatPhoneForSms(booking.phone),
-      Body: summary
-    });
-    const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString("base64");
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: params
-    });
-    const result = await response.json().catch(() => ({}));
-    results.push({
-      channel: "sms",
-      ok: response.ok,
-      status: response.status,
-      id: result.sid,
-      reason: result.message
-    });
-  } else {
-    results.push({ channel: "sms", ok: false, reason: "missing_sms_provider" });
-  }
-
-  return results;
+  return Promise.all([
+    sendEmailNotification(booking, "Your Dior Nails appointment is confirmed", summary, emailHtml),
+    sendSmsNotification(booking, summary)
+  ]);
 }
 
 async function notifyCancellation(booking, cancelledBy = "the salon") {
@@ -770,65 +803,10 @@ async function notifyCancellation(booking, cancelledBy = "the salon") {
       <p>Questions? Call Dior Nails &amp; Spa at <a href="tel:+18622583070">(862) 258-3070</a>.</p>
     </div>
   `;
-  const results = [];
-
-  if (booking.email && process.env.RESEND_API_KEY && process.env.NOTIFICATION_FROM_EMAIL) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        from: process.env.NOTIFICATION_FROM_EMAIL,
-        to: booking.email,
-        subject: "Your Dior Nails appointment was cancelled",
-        text: summary,
-        html: emailHtml
-      })
-    });
-    const result = await response.json().catch(() => ({}));
-    results.push({
-      channel: "email",
-      ok: response.ok,
-      status: response.status,
-      id: result.id,
-      reason: result.message || result.error
-    });
-  } else if (!booking.email) {
-    results.push({ channel: "email", ok: false, reason: "customer_email_not_provided" });
-  } else {
-    results.push({ channel: "email", ok: false, reason: "missing_email_provider" });
-  }
-
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER) {
-    const params = new URLSearchParams({
-      From: process.env.TWILIO_FROM_NUMBER,
-      To: formatPhoneForSms(booking.phone),
-      Body: summary
-    });
-    const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString("base64");
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: params
-    });
-    const result = await response.json().catch(() => ({}));
-    results.push({
-      channel: "sms",
-      ok: response.ok,
-      status: response.status,
-      id: result.sid,
-      reason: result.message
-    });
-  } else {
-    results.push({ channel: "sms", ok: false, reason: "missing_sms_provider" });
-  }
-
-  return results;
+  return Promise.all([
+    sendEmailNotification(booking, "Your Dior Nails appointment was cancelled", summary, emailHtml),
+    sendSmsNotification(booking, summary)
+  ]);
 }
 
 function normalizeName(value) {
@@ -885,6 +863,8 @@ async function createBooking(input, createdBy = "customer") {
     customerName: `${firstName} ${lastName}`.trim(),
     email: String(input.email || "").trim().toLowerCase(),
     phone: displayPhone(input.phone),
+    smsConsent: booleanValue(input.smsConsent),
+    smsConsentAt: booleanValue(input.smsConsent) ? new Date().toISOString() : "",
     service,
     staffId,
     staffName,
@@ -1046,7 +1026,8 @@ async function handleApi(req, res, pathname, searchParams) {
       service: "Test Appointment",
       staffName: "Kevin",
       date: localTodayIso(),
-      time: "09:00"
+      time: "09:00",
+      smsConsent: true
     };
 
     const notifications = await notifyCustomer(testBooking).catch((error) => [

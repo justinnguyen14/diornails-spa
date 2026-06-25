@@ -627,7 +627,7 @@ form?.addEventListener("submit", async (event) => {
     const booking = result.booking;
     const sentChannels = (booking.notifications || [])
       .filter((notification) => notification.ok)
-      .map((notification) => notification.channel);
+      .map((notification) => notification.channel === "sms" ? "text" : notification.channel);
     const notificationText = sentChannels.length
       ? ` Confirmation sent by ${sentChannels.join(" and ")}.`
       : booking.email
@@ -761,7 +761,7 @@ confirmCancelButton?.addEventListener("click", async () => {
 
     const sentChannels = (result.booking?.cancellationNotifications || [])
       .filter((notification) => notification.ok)
-      .map((notification) => notification.channel);
+      .map((notification) => notification.channel === "sms" ? "text" : notification.channel);
     const notificationText = sentChannels.length
       ? ` Cancellation notice sent by ${sentChannels.join(" and ")}.`
       : " Cancellation saved. Email/text cancellation notice could not be sent yet.";

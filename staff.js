@@ -271,6 +271,10 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
               <span>Email (optional)</span>
               <input name="email" type="email" autocomplete="email" />
             </label>
+            <label class="staff-booking-wide sms-consent">
+              <input name="smsConsent" type="checkbox" value="true" />
+              <span>Customer agreed to receive appointment confirmation and cancellation texts.</span>
+            </label>
             <label class="staff-booking-wide">
               <span>Service</span>
               <select name="service" required>
@@ -1382,6 +1386,7 @@ function renderCustomerSearchResults(customers) {
           data-last-name="${escapeHtml(customer.lastName)}"
           data-phone="${escapeHtml(customer.phone)}"
           data-email="${escapeHtml(customer.email || "")}"
+          data-sms-consent="${customer.smsConsent ? "true" : "false"}"
         >
           <span>
             <strong>${escapeHtml(customer.firstName)} ${escapeHtml(customer.lastName)}</strong><br />
@@ -1475,8 +1480,12 @@ document.addEventListener("submit", async (event) => {
     closeStaffBookingModal();
     selectedBookingId = result.booking.id;
     bookingDetailsPinned = true;
+    const sentChannels = (result.booking.notifications || [])
+      .filter((notification) => notification.ok)
+      .map((notification) => notification.channel === "sms" ? "text" : notification.channel);
+    const notice = sentChannels.length ? ` Confirmation sent by ${sentChannels.join(" and ")}.` : "";
     await loadBookings();
-    calendarBoard.insertAdjacentHTML("afterbegin", '<p class="form-status staff-action-status" role="status">Appointment created.</p>');
+    calendarBoard.insertAdjacentHTML("afterbegin", `<p class="form-status staff-action-status" role="status">Appointment created.${notice}</p>`);
   } catch (error) {
     status.textContent = error.message;
     status.dataset.type = "error";
@@ -1497,6 +1506,7 @@ document.addEventListener("click", async (event) => {
       form.elements.lastName.value = selectedCustomer.dataset.lastName;
       form.elements.phone.value = selectedCustomer.dataset.phone;
       form.elements.email.value = selectedCustomer.dataset.email;
+      form.elements.smsConsent.checked = selectedCustomer.dataset.smsConsent === "true";
       document.querySelector("#staff-customer-search").value = `${selectedCustomer.dataset.firstName} ${selectedCustomer.dataset.lastName}`;
       document.querySelector("#staff-customer-results").innerHTML = "<p>Saved customer selected.</p>";
     }
@@ -1538,7 +1548,7 @@ document.addEventListener("click", async (event) => {
 
     const sentChannels = (result.booking?.cancellationNotifications || [])
       .filter((notification) => notification.ok)
-      .map((notification) => notification.channel);
+      .map((notification) => notification.channel === "sms" ? "text" : notification.channel);
     const notice = sentChannels.length
       ? ` Cancellation notice sent by ${sentChannels.join(" and ")}.`
       : " Cancellation saved. Email/text cancellation notice could not be sent yet.";

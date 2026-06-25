@@ -1060,6 +1060,33 @@ textarea:focus {
   max-width: 100%;
 }
 
+.sms-consent {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem !important;
+  align-items: start;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: #fffaf8;
+}
+
+.sms-consent input {
+  width: 1.1rem !important;
+  height: 1.1rem;
+  margin: 0.12rem 0 0;
+  accent-color: var(--red);
+}
+
+.sms-consent span {
+  color: var(--muted) !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.4;
+  text-transform: none !important;
+}
+
 .time-slots {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
