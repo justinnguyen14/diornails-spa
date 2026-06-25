@@ -9,6 +9,7 @@ const SALON_TIME_ZONE = "America/New_York";
 const DATA_DIR = path.join(__dirname, "data");
 const BOOKINGS_FILE = path.join(DATA_DIR, "bookings.json");
 const SCHEDULE_FILE = path.join(DATA_DIR, "schedule.json");
+const CUSTOMERS_FILE = path.join(DATA_DIR, "customers.json");
 const PUBLIC_DIR = __dirname;
 
 loadEnvFile();
@@ -208,6 +209,10 @@ function ensureStore() {
   if (!fs.existsSync(SCHEDULE_FILE)) {
     writeSchedule(defaultSchedule());
   }
+
+  if (!fs.existsSync(CUSTOMERS_FILE)) {
+    fs.writeFileSync(CUSTOMERS_FILE, "[]\n");
+  }
 }
 
 function readBookings() {
@@ -218,6 +223,95 @@ function readBookings() {
 function writeBookings(bookings) {
   ensureStore();
   fs.writeFileSync(BOOKINGS_FILE, `${JSON.stringify(bookings, null, 2)}\n`);
+}
+
+function readCustomers() {
+  ensureStore();
+  return JSON.parse(fs.readFileSync(CUSTOMERS_FILE, "utf8"));
+}
+
+function writeCustomers(customers) {
+  ensureStore();
+  fs.writeFileSync(CUSTOMERS_FILE, `${JSON.stringify(customers, null, 2)}\n`);
+}
+
+function upsertCustomer(input) {
+  const firstName = String(input.firstName || "").trim();
+  const lastName = String(input.lastName || "").trim();
+  const phone = displayPhone(input.phone);
+  const digits = phoneDigits(phone);
+
+  if (!firstName || !lastName || digits.length !== 10) {
+    return null;
+  }
+
+  const customers = readCustomers();
+  const index = customers.findIndex((customer) => (
+    phoneDigits(customer.phone) === digits &&
+    normalizeName(customer.firstName) === normalizeName(firstName) &&
+    normalizeName(customer.lastName) === normalizeName(lastName)
+  ));
+  const existing = index >= 0 ? customers[index] : {};
+  const customer = {
+    id: existing.id || `cus_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    firstName,
+    lastName,
+    customerName: `${firstName} ${lastName}`.trim(),
+    phone,
+    email: String(input.email || existing.email || "").trim().toLowerCase(),
+    createdAt: existing.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (index >= 0) {
+    customers[index] = customer;
+  } else {
+    customers.push(customer);
+  }
+
+  writeCustomers(customers);
+  return customer;
+}
+
+function syncCustomersFromBookings() {
+  const bookings = readBookings();
+  const customers = readCustomers();
+  let changed = false;
+
+  bookings.forEach((booking) => {
+    const digits = phoneDigits(booking.phone);
+    const parts = bookingNameParts(booking);
+
+    if (!parts.firstName || !parts.lastName || digits.length !== 10) {
+      return;
+    }
+
+    const index = customers.findIndex((customer) => (
+      phoneDigits(customer.phone) === digits &&
+      normalizeName(customer.firstName) === parts.firstName &&
+      normalizeName(customer.lastName) === parts.lastName
+    ));
+
+    if (index >= 0) {
+      return;
+    }
+
+    customers.push({
+      id: `cus_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      firstName: booking.firstName || String(booking.customerName || "").trim().split(/\s+/)[0],
+      lastName: booking.lastName || String(booking.customerName || "").trim().split(/\s+/).at(-1),
+      customerName: booking.customerName,
+      phone: displayPhone(booking.phone),
+      email: String(booking.email || "").trim().toLowerCase(),
+      createdAt: booking.createdAt || new Date().toISOString(),
+      updatedAt: booking.updatedAt || booking.createdAt || new Date().toISOString()
+    });
+    changed = true;
+  });
+
+  if (changed) {
+    writeCustomers(customers);
+  }
 }
 
 function defaultSchedule() {
@@ -514,14 +608,14 @@ function assignStaff(bookings, requestedStaffId, date, time, durationMinutes) {
 }
 
 function validateBooking(input) {
-  const required = ["firstName", "lastName", "email", "phone", "service", "date", "time"];
+  const required = ["firstName", "lastName", "phone", "service", "date", "time"];
   const missing = required.filter((key) => !String(input[key] || "").trim());
 
   if (missing.length > 0) {
     return `${missing.join(", ")} required.`;
   }
 
-  if (!isValidEmail(input.email)) {
+  if (String(input.email || "").trim() && !isValidEmail(input.email)) {
     return "Please enter a valid email address.";
   }
 
@@ -598,7 +692,7 @@ async function notifyCustomer(booking) {
   `;
   const results = [];
 
-  if (process.env.RESEND_API_KEY && process.env.NOTIFICATION_FROM_EMAIL) {
+  if (booking.email && process.env.RESEND_API_KEY && process.env.NOTIFICATION_FROM_EMAIL) {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -621,6 +715,8 @@ async function notifyCustomer(booking) {
       id: result.id,
       reason: result.message || result.error
     });
+  } else if (!booking.email) {
+    results.push({ channel: "email", ok: false, reason: "customer_email_not_provided" });
   } else {
     results.push({ channel: "email", ok: false, reason: "missing_email_provider" });
   }
@@ -676,7 +772,7 @@ async function notifyCancellation(booking, cancelledBy = "the salon") {
   `;
   const results = [];
 
-  if (process.env.RESEND_API_KEY && process.env.NOTIFICATION_FROM_EMAIL) {
+  if (booking.email && process.env.RESEND_API_KEY && process.env.NOTIFICATION_FROM_EMAIL) {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -699,6 +795,8 @@ async function notifyCancellation(booking, cancelledBy = "the salon") {
       id: result.id,
       reason: result.message || result.error
     });
+  } else if (!booking.email) {
+    results.push({ channel: "email", ok: false, reason: "customer_email_not_provided" });
   } else {
     results.push({ channel: "email", ok: false, reason: "missing_email_provider" });
   }
@@ -759,6 +857,56 @@ function matchesCustomerIdentity(booking, phone, firstName, lastName) {
     parts.firstName === normalizeName(firstName) &&
     parts.lastName === normalizeName(lastName)
   );
+}
+
+async function createBooking(input, createdBy = "customer") {
+  const validationError = validateBooking(input);
+
+  if (validationError) {
+    return { statusCode: 400, error: validationError };
+  }
+
+  const bookings = readBookings();
+  const service = canonicalServiceName(input.service);
+  const durationMinutes = durationForService(service);
+  const staffId = assignStaff(bookings, input.staffId || "any", input.date, input.time, durationMinutes);
+
+  if (!staffId) {
+    return { statusCode: 409, error: "That time is no longer available. Please choose another time." };
+  }
+
+  const staffName = bookableStaff.find((person) => person.id === staffId).name;
+  const firstName = String(input.firstName).trim();
+  const lastName = String(input.lastName).trim();
+  const booking = {
+    id: `apt_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    firstName,
+    lastName,
+    customerName: `${firstName} ${lastName}`.trim(),
+    email: String(input.email || "").trim().toLowerCase(),
+    phone: displayPhone(input.phone),
+    service,
+    staffId,
+    staffName,
+    date: input.date,
+    time: input.time,
+    durationMinutes,
+    notes: String(input.notes || "").trim(),
+    status: "confirmed",
+    createdBy,
+    createdAt: new Date().toISOString(),
+    notifications: []
+  };
+
+  booking.notifications = await notifyCustomer(booking).catch((error) => [
+    { channel: "notification", ok: false, reason: error.message }
+  ]);
+
+  const customer = upsertCustomer(booking);
+  booking.customerId = customer?.id || "";
+  bookings.push(booking);
+  writeBookings(bookings);
+  return { statusCode: 201, booking };
 }
 
 function escapeHtml(value) {
@@ -946,52 +1094,48 @@ async function handleApi(req, res, pathname, searchParams) {
   if (req.method === "POST" && pathname === "/api/bookings") {
     try {
       const input = await readJson(req);
-      const validationError = validateBooking(input);
+      const result = await createBooking(input);
+      sendJson(res, result.statusCode, result.error ? { error: result.error } : { booking: result.booking });
+    } catch (error) {
+      sendJson(res, 400, { error: "Unable to create booking." });
+    }
+    return;
+  }
 
-      if (validationError) {
-        sendJson(res, 400, { error: validationError });
-        return;
-      }
+  if (req.method === "GET" && pathname === "/api/customers") {
+    if (!requirePortal(req, res)) {
+      return;
+    }
 
-      const bookings = readBookings();
-      const service = canonicalServiceName(input.service);
-      const durationMinutes = durationForService(service);
-      const staffId = assignStaff(bookings, input.staffId || "any", input.date, input.time, durationMinutes);
+    const query = String(searchParams.get("q") || "").trim().toLowerCase();
+    const queryDigits = phoneDigits(query);
+    const customers = readCustomers()
+      .filter((customer) => {
+        if (!query) return true;
+        const name = `${customer.firstName} ${customer.lastName}`.toLowerCase();
+        return (
+          name.includes(query) ||
+          String(customer.firstName || "").toLowerCase().includes(query) ||
+          String(customer.lastName || "").toLowerCase().includes(query) ||
+          (queryDigits && phoneDigits(customer.phone).includes(queryDigits))
+        );
+      })
+      .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+      .slice(0, 20);
 
-      if (!staffId) {
-        sendJson(res, 409, { error: "That time is no longer available. Please choose another time." });
-        return;
-      }
+    sendJson(res, 200, { customers });
+    return;
+  }
 
-      const staffName = bookableStaff.find((person) => person.id === staffId).name;
-      const firstName = String(input.firstName).trim();
-      const lastName = String(input.lastName).trim();
-      const booking = {
-        id: `apt_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        firstName,
-        lastName,
-        customerName: `${firstName} ${lastName}`.trim(),
-        email: String(input.email).trim().toLowerCase(),
-        phone: displayPhone(input.phone),
-        service,
-        staffId,
-        staffName,
-        date: input.date,
-        time: input.time,
-        durationMinutes,
-        notes: String(input.notes || "").trim(),
-        status: "confirmed",
-        createdAt: new Date().toISOString(),
-        notifications: []
-      };
+  if (req.method === "POST" && pathname === "/api/staff-bookings") {
+    if (!requirePortal(req, res)) {
+      return;
+    }
 
-      booking.notifications = await notifyCustomer(booking).catch((error) => [
-        { channel: "notification", ok: false, reason: error.message }
-      ]);
-
-      bookings.push(booking);
-      writeBookings(bookings);
-      sendJson(res, 201, { booking });
+    try {
+      const input = await readJson(req);
+      const result = await createBooking(input, "staff");
+      sendJson(res, result.statusCode, result.error ? { error: result.error } : { booking: result.booking });
     } catch (error) {
       sendJson(res, 400, { error: "Unable to create booking." });
     }
@@ -1161,6 +1305,8 @@ async function handleApi(req, res, pathname, searchParams) {
       durationMinutes,
       updatedAt: new Date().toISOString()
     };
+    const customer = upsertCustomer(bookings[index]);
+    bookings[index].customerId = customer?.id || bookings[index].customerId || "";
     writeBookings(bookings);
     sendJson(res, 200, { booking: bookings[index] });
     return;
@@ -1208,5 +1354,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   ensureStore();
+  syncCustomersFromBookings();
   console.log(`Dior Nails booking system running at http://localhost:${PORT}`);
 });

@@ -303,7 +303,7 @@ function validateContactFields() {
   const email = emailInput.value.trim();
   const phone = phoneDigits(phoneInput.value);
 
-  emailInput.setCustomValidity(isValidEmail(email) ? "" : "Enter a valid email address.");
+  emailInput.setCustomValidity(!email || isValidEmail(email) ? "" : "Enter a valid email address.");
   phoneInput.setCustomValidity(phone.length === 10 ? "" : "Enter a full 10 digit phone number.");
 
   return form.reportValidity();
@@ -630,7 +630,9 @@ form?.addEventListener("submit", async (event) => {
       .map((notification) => notification.channel);
     const notificationText = sentChannels.length
       ? ` Confirmation sent by ${sentChannels.join(" and ")}.`
-      : " Confirmation saved. Email/text sending will activate after notification accounts are connected.";
+      : booking.email
+        ? " Confirmation saved. A notification could not be sent."
+        : " Appointment saved. No email address was provided.";
 
     form.classList.add("is-hidden");
     confirmationPanel.classList.remove("is-hidden");
