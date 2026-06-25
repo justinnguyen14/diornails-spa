@@ -10,19 +10,15 @@ const DATA_DIR = path.join(__dirname, "data");
 const BOOKINGS_FILE = path.join(DATA_DIR, "bookings.json");
 const SCHEDULE_FILE = path.join(DATA_DIR, "schedule.json");
 const CUSTOMERS_FILE = path.join(DATA_DIR, "customers.json");
+const STAFF_FILE = path.join(DATA_DIR, "staff.json");
 const PUBLIC_DIR = __dirname;
 
 loadEnvFile();
 
 const defaultNailTechs = "Kevin,Rumi,Kvita,Ana,Khrystyna,Marta,Oksana,Sandra";
-const nailTechs = parseNailTechs(process.env.NAIL_TECHS || defaultNailTechs);
-
-const staff = [
-  { id: "any", name: "Any available tech" },
-  ...nailTechs
-];
-
-const bookableStaff = nailTechs;
+const initialNailTechs = parseNailTechs(process.env.NAIL_TECHS || defaultNailTechs);
+let bookableStaff = readStaffRecords();
+let staff = [{ id: "any", name: "Any available tech" }, ...bookableStaff];
 
 const serviceGroups = [
   {
@@ -172,6 +168,51 @@ function workDaysForTech(name) {
   return [0, 1, 2, 3, 4, 5, 6];
 }
 
+function normalizeStaffRecord(record, fallback = {}) {
+  const name = String(record.name || fallback.name || "").trim();
+  return {
+    id: String(record.id || fallback.id || slugify(name)).trim(),
+    name,
+    phone: displayPhone(record.phone || fallback.phone || ""),
+    email: String(record.email || fallback.email || "").trim().toLowerCase(),
+    active: record.active !== false,
+    workDays: Array.isArray(record.workDays)
+      ? record.workDays.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+      : fallback.workDays || workDaysForTech(name),
+    createdAt: record.createdAt || fallback.createdAt || new Date().toISOString(),
+    updatedAt: record.updatedAt || fallback.updatedAt || new Date().toISOString()
+  };
+}
+
+function readAllStaffRecords() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(STAFF_FILE)) {
+    fs.writeFileSync(
+      STAFF_FILE,
+      `${JSON.stringify(initialNailTechs.map((person) => normalizeStaffRecord(person)), null, 2)}\n`
+    );
+  }
+
+  return JSON.parse(fs.readFileSync(STAFF_FILE, "utf8")).map((record) => normalizeStaffRecord(record));
+}
+
+function readStaffRecords() {
+  return readAllStaffRecords().filter((record) => record.active !== false);
+}
+
+function writeStaffRecords(records) {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  fs.writeFileSync(STAFF_FILE, `${JSON.stringify(records.map((record) => normalizeStaffRecord(record)), null, 2)}\n`);
+  bookableStaff = records.filter((record) => record.active !== false).map((record) => normalizeStaffRecord(record));
+  staff = [{ id: "any", name: "Any available tech" }, ...bookableStaff];
+}
+
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
 
@@ -213,6 +254,10 @@ function ensureStore() {
   if (!fs.existsSync(CUSTOMERS_FILE)) {
     fs.writeFileSync(CUSTOMERS_FILE, "[]\n");
   }
+
+  if (!fs.existsSync(STAFF_FILE)) {
+    writeStaffRecords(initialNailTechs);
+  }
 }
 
 function readBookings() {
@@ -252,6 +297,8 @@ function upsertCustomer(input) {
     normalizeName(customer.lastName) === normalizeName(lastName)
   ));
   const existing = index >= 0 ? customers[index] : {};
+  const hasSmsConsent = Object.prototype.hasOwnProperty.call(input, "smsConsent");
+  const smsConsent = hasSmsConsent ? booleanValue(input.smsConsent) : Boolean(existing.smsConsent);
   const customer = {
     id: existing.id || `cus_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     firstName,
@@ -259,8 +306,8 @@ function upsertCustomer(input) {
     customerName: `${firstName} ${lastName}`.trim(),
     phone,
     email: String(input.email || existing.email || "").trim().toLowerCase(),
-    smsConsent: booleanValue(input.smsConsent) || Boolean(existing.smsConsent),
-    smsConsentAt: booleanValue(input.smsConsent) ? new Date().toISOString() : existing.smsConsentAt || "",
+    smsConsent,
+    smsConsentAt: smsConsent ? existing.smsConsentAt || new Date().toISOString() : "",
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -548,6 +595,12 @@ function slotsForDate(dateString, durationMinutes = 60) {
   return slots;
 }
 
+function appointmentFitsSalonHours(dateString, time, durationMinutes) {
+  const { open, close } = getHours(dateString);
+  const start = timeToMinutes(time);
+  return start >= timeToMinutes(open) && start + durationMinutes <= timeToMinutes(close);
+}
+
 function overlaps(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && bStart < aEnd;
 }
@@ -555,7 +608,7 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
 function isStaffAvailable(bookings, staffId, date, time, durationMinutes = 60) {
   const worker = bookableStaff.find((person) => person.id === staffId);
 
-  if (isPastDate(date) || isPastSlot(date, time)) {
+  if (isPastDate(date) || isPastSlot(date, time) || !appointmentFitsSalonHours(date, time, durationMinutes)) {
     return false;
   }
 
@@ -637,8 +690,12 @@ function validateBooking(input) {
     return "Please choose today or a future date.";
   }
 
+  if (!appointmentFitsSalonHours(input.date, input.time, serviceDurations[service])) {
+    return `That service must finish by the salon closing time of ${displayTime(getHours(input.date).close)}.`;
+  }
+
   if (!slotsForDate(input.date, serviceDurations[service]).includes(input.time)) {
-    return "That appointment time is outside salon hours.";
+    return "Please choose a 15-minute appointment start time within salon hours.";
   }
 
   if (isPastSlot(input.date, input.time)) {
@@ -1102,9 +1159,222 @@ async function handleApi(req, res, pathname, searchParams) {
         );
       })
       .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
-      .slice(0, 20);
+      .slice(0, query ? 20 : 200);
 
     sendJson(res, 200, { customers });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/customers") {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+
+    const input = await readJson(req);
+    const firstName = String(input.firstName || "").trim();
+    const lastName = String(input.lastName || "").trim();
+
+    if (!firstName || !lastName || phoneDigits(input.phone).length !== 10) {
+      sendJson(res, 400, { error: "First name, last name, and a full 10 digit phone number are required." });
+      return;
+    }
+
+    if (String(input.email || "").trim() && !isValidEmail(input.email)) {
+      sendJson(res, 400, { error: "Please enter a valid email address." });
+      return;
+    }
+
+    const customers = readCustomers();
+    const customer = {
+      id: `cus_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      firstName,
+      lastName,
+      customerName: `${firstName} ${lastName}`,
+      phone: displayPhone(input.phone),
+      email: String(input.email || "").trim().toLowerCase(),
+      smsConsent: booleanValue(input.smsConsent),
+      smsConsentAt: booleanValue(input.smsConsent) ? new Date().toISOString() : "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    customers.push(customer);
+    writeCustomers(customers);
+    sendJson(res, 201, { customer });
+    return;
+  }
+
+  if (req.method === "PATCH" && pathname.startsWith("/api/customers/")) {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+
+    const customerId = decodeURIComponent(pathname.slice("/api/customers/".length));
+    const input = await readJson(req);
+    const customers = readCustomers();
+    const index = customers.findIndex((customer) => customer.id === customerId);
+
+    if (index < 0) {
+      sendJson(res, 404, { error: "Customer not found." });
+      return;
+    }
+
+    const firstName = String(input.firstName || "").trim();
+    const lastName = String(input.lastName || "").trim();
+    if (!firstName || !lastName || phoneDigits(input.phone).length !== 10) {
+      sendJson(res, 400, { error: "First name, last name, and a full 10 digit phone number are required." });
+      return;
+    }
+    if (String(input.email || "").trim() && !isValidEmail(input.email)) {
+      sendJson(res, 400, { error: "Please enter a valid email address." });
+      return;
+    }
+
+    const smsConsent = booleanValue(input.smsConsent);
+    customers[index] = {
+      ...customers[index],
+      firstName,
+      lastName,
+      customerName: `${firstName} ${lastName}`,
+      phone: displayPhone(input.phone),
+      email: String(input.email || "").trim().toLowerCase(),
+      smsConsent,
+      smsConsentAt: smsConsent ? customers[index].smsConsentAt || new Date().toISOString() : "",
+      updatedAt: new Date().toISOString()
+    };
+    writeCustomers(customers);
+    sendJson(res, 200, { customer: customers[index] });
+    return;
+  }
+
+  if (req.method === "DELETE" && pathname.startsWith("/api/customers/")) {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+
+    const customerId = decodeURIComponent(pathname.slice("/api/customers/".length));
+    const customers = readCustomers();
+    const nextCustomers = customers.filter((customer) => customer.id !== customerId);
+    if (nextCustomers.length === customers.length) {
+      sendJson(res, 404, { error: "Customer not found." });
+      return;
+    }
+
+    writeCustomers(nextCustomers);
+    sendJson(res, 200, { removed: true });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/staff-records") {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+
+    sendJson(res, 200, { staff: readAllStaffRecords() });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/staff-records") {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+
+    const input = await readJson(req);
+    const name = String(input.name || "").trim();
+    if (!name) {
+      sendJson(res, 400, { error: "Employee name is required." });
+      return;
+    }
+    if (String(input.phone || "").trim() && phoneDigits(input.phone).length !== 10) {
+      sendJson(res, 400, { error: "Enter a full 10 digit phone number or leave it blank." });
+      return;
+    }
+    if (String(input.email || "").trim() && !isValidEmail(input.email)) {
+      sendJson(res, 400, { error: "Please enter a valid email address." });
+      return;
+    }
+
+    const records = readAllStaffRecords();
+    let id = slugify(name) || `worker-${Date.now()}`;
+    if (records.some((person) => person.id === id)) {
+      id = `${id}-${Date.now()}`;
+    }
+    const employee = normalizeStaffRecord({
+      id,
+      name,
+      phone: input.phone,
+      email: input.email,
+      active: input.active !== false,
+      workDays: [0, 1, 2, 3, 4, 5, 6]
+    });
+    records.push(employee);
+    writeStaffRecords(records);
+    const schedule = readSchedule();
+    schedule.weekly[employee.id] = employee.workDays;
+    writeSchedule(schedule);
+    sendJson(res, 201, { employee });
+    return;
+  }
+
+  if (req.method === "PATCH" && pathname.startsWith("/api/staff-records/")) {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+
+    const staffId = decodeURIComponent(pathname.slice("/api/staff-records/".length));
+    const input = await readJson(req);
+    const records = readAllStaffRecords();
+    const index = records.findIndex((person) => person.id === staffId);
+    if (index < 0) {
+      sendJson(res, 404, { error: "Employee not found." });
+      return;
+    }
+    const name = String(input.name || "").trim();
+    if (!name) {
+      sendJson(res, 400, { error: "Employee name is required." });
+      return;
+    }
+    if (String(input.phone || "").trim() && phoneDigits(input.phone).length !== 10) {
+      sendJson(res, 400, { error: "Enter a full 10 digit phone number or leave it blank." });
+      return;
+    }
+    if (String(input.email || "").trim() && !isValidEmail(input.email)) {
+      sendJson(res, 400, { error: "Please enter a valid email address." });
+      return;
+    }
+
+    records[index] = normalizeStaffRecord({
+      ...records[index],
+      name,
+      phone: input.phone,
+      email: input.email,
+      active: input.active !== false,
+      updatedAt: new Date().toISOString()
+    });
+    writeStaffRecords(records);
+    sendJson(res, 200, { employee: records[index] });
+    return;
+  }
+
+  if (req.method === "DELETE" && pathname.startsWith("/api/staff-records/")) {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+
+    const staffId = decodeURIComponent(pathname.slice("/api/staff-records/".length));
+    const records = readAllStaffRecords();
+    const index = records.findIndex((person) => person.id === staffId);
+    if (index < 0) {
+      sendJson(res, 404, { error: "Employee not found." });
+      return;
+    }
+
+    records[index] = normalizeStaffRecord({
+      ...records[index],
+      active: false,
+      updatedAt: new Date().toISOString()
+    });
+    writeStaffRecords(records);
+    sendJson(res, 200, { employee: records[index], removed: true });
     return;
   }
 
@@ -1269,8 +1539,15 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
+    if (!appointmentFitsSalonHours(nextBooking.date, nextBooking.time, durationMinutes)) {
+      sendJson(res, 400, {
+        error: `That service must finish by the salon closing time of ${displayTime(getHours(nextBooking.date).close)}.`
+      });
+      return;
+    }
+
     if (!slotsForDate(nextBooking.date, durationMinutes).includes(nextBooking.time)) {
-      sendJson(res, 400, { error: "That appointment time is outside salon hours." });
+      sendJson(res, 400, { error: "Please choose a 15-minute appointment start time within salon hours." });
       return;
     }
 

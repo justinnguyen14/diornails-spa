@@ -6,6 +6,8 @@ const calendarStaff = document.querySelector("#calendar-staff");
 const calendarDate = document.querySelector("#calendar-date");
 const calendarBoard = document.querySelector("#calendar-board");
 const refreshCalendar = document.querySelector("#refresh-calendar");
+const managePeopleButton = document.querySelector("#manage-people");
+const settingsMenu = document.querySelector("#settings-menu");
 const summaryCount = document.querySelector("#summary-count");
 const summaryWorkers = document.querySelector("#summary-workers");
 const summaryView = document.querySelector("#summary-view");
@@ -18,12 +20,17 @@ let bookings = [];
 let selectedBookingId = "";
 let editingBookingId = "";
 let scheduleData = { weekly: {}, overrides: {} };
+let scheduleDraft = { weekly: {}, overrides: {} };
+let scheduleDraftOverrides = {};
 let pendingStaffCancel = null;
 let serviceGroups = [];
 let serviceDurations = {};
 let customerSearchTimer = null;
 let bookingPreviewTimer = null;
 let bookingDetailsPinned = false;
+let pendingManagerView = "";
+let peopleTab = "employees";
+let peopleRecords = { employees: [], customers: [] };
 
 const workerColorMap = {
   kevin: { bg: "#ffe4e6", border: "#fb7185", ink: "#7f1d1d" },
@@ -89,6 +96,84 @@ function displayDate(value) {
   const day = String(date.getDate()).padStart(2, "0");
   const year = date.getFullYear();
   return `${weekday} ${month}/${day}/${year}`;
+}
+
+function managerDateHeader(value) {
+  const date = new Date(`${value}T12:00:00`);
+  const weekday = date.toLocaleDateString([], { weekday: "long" });
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `
+    <span class="manager-date-header">
+      <strong>${escapeHtml(weekday)}</strong>
+      <small>${month}/${day}/${year}</small>
+    </span>
+  `;
+}
+
+function cloneSchedule(schedule) {
+  return JSON.parse(JSON.stringify(schedule || { weekly: {}, overrides: {} }));
+}
+
+function normalizedSchedule(schedule) {
+  const weekly = {};
+  const overrides = {};
+
+  Object.keys(schedule?.weekly || {}).sort().forEach((staffId) => {
+    weekly[staffId] = [...new Set((schedule.weekly[staffId] || []).map(Number))].sort((a, b) => a - b);
+  });
+
+  Object.keys(schedule?.overrides || {}).sort().forEach((date) => {
+    const values = {};
+    Object.keys(schedule.overrides[date] || {}).sort().forEach((staffId) => {
+      if (typeof schedule.overrides[date][staffId] === "boolean") {
+        values[staffId] = schedule.overrides[date][staffId];
+      }
+    });
+    if (Object.keys(values).length) overrides[date] = values;
+  });
+
+  return { weekly, overrides };
+}
+
+function hasUnsavedScheduleChanges() {
+  return JSON.stringify(normalizedSchedule(scheduleDraft)) !== JSON.stringify(normalizedSchedule(scheduleData));
+}
+
+function resetScheduleDraft() {
+  scheduleDraft = cloneSchedule(scheduleData);
+  scheduleDraftOverrides = {};
+}
+
+function closeUnsavedScheduleModal() {
+  document.querySelector("#unsaved-schedule-modal")?.remove();
+  pendingManagerView = "";
+}
+
+function openUnsavedScheduleModal(nextView) {
+  pendingManagerView = nextView;
+  document.querySelector("#unsaved-schedule-modal")?.remove();
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="cancel-modal" id="unsaved-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="unsaved-schedule-title">
+      <div class="cancel-modal-card">
+        <h2 id="unsaved-schedule-title">Unsaved schedule changes</h2>
+        <p>Leaving Manager will discard changes that have not been saved. Go back to keep editing, discard them, or save everything now.</p>
+        <div class="cancel-modal-actions">
+          <button class="button button-secondary" type="button" data-manager-stay>Back to Manager</button>
+          <button class="button button-secondary" type="button" data-manager-discard>Leave Without Saving</button>
+          <button class="button" type="button" data-manager-save-leave>Save Changes Now</button>
+        </div>
+        <p class="form-status" id="unsaved-schedule-status" role="status"></p>
+      </div>
+    </div>
+  `);
+  document.querySelector("[data-manager-stay]")?.focus();
+}
+
+function activeSchedule() {
+  return scheduleDraft || scheduleData;
 }
 
 function displayTime(value) {
@@ -230,6 +315,41 @@ function serviceSelectOptions() {
   `).join("");
 }
 
+function updateStaffBookingClosingLimit(form) {
+  if (!form) {
+    return;
+  }
+
+  const serviceInput = form.elements.service;
+  const dateInput = form.elements.date;
+  const timeInput = form.elements.time;
+  const helper = form.querySelector("#staff-time-limit");
+  const duration = Number(serviceDurations[serviceInput.value] || 0);
+
+  if (!dateInput.value || !duration) {
+    timeInput.setCustomValidity("");
+    helper.textContent = "Choose a service to calculate the latest available start time.";
+    return;
+  }
+
+  const hours = getHours(dateInput.value);
+  const openingMinutes = timeToMinutes(hours.open);
+  const latestUnalignedStart = timeToMinutes(hours.close) - duration;
+  const latestStart = openingMinutes + Math.floor((latestUnalignedStart - openingMinutes) / 15) * 15;
+  const latestTime = minutesToTime(latestStart);
+  timeInput.min = hours.open;
+  timeInput.max = latestTime;
+  const selectedMinutes = timeInput.value ? timeToMinutes(timeInput.value) : -1;
+  const fits = selectedMinutes >= openingMinutes && selectedMinutes <= latestStart && (selectedMinutes - openingMinutes) % 15 === 0;
+
+  timeInput.setCustomValidity(
+    !timeInput.value || fits
+      ? ""
+      : `Choose a start time no later than ${displayTime(latestTime)} so this service finishes by ${displayTime(hours.close)}.`
+  );
+  helper.textContent = `This service must start by ${displayTime(latestTime)} to finish before the ${displayTime(hours.close)} closing time.`;
+}
+
 function openStaffBookingModal({ date, time, staffId = "" }) {
   document.querySelector("#staff-booking-modal")?.remove();
   document.body.insertAdjacentHTML("beforeend", `
@@ -298,6 +418,7 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
             <label>
               <span>Start time</span>
               <input name="time" type="time" step="900" value="${escapeHtml(time)}" required />
+              <small id="staff-time-limit">Choose a service to calculate the latest available start time.</small>
             </label>
             <label class="staff-booking-wide">
               <span>Notes</span>
@@ -316,11 +437,218 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
   `);
 
   document.querySelector("#staff-customer-search")?.focus();
+  updateStaffBookingClosingLimit(document.querySelector("#staff-booking-form"));
 }
 
 function closeStaffBookingModal() {
   clearTimeout(customerSearchTimer);
   document.querySelector("#staff-booking-modal")?.remove();
+}
+
+function peopleRecordForm() {
+  if (peopleTab === "employees") {
+    return `
+      <form class="people-form" id="employee-record-form">
+        <input name="id" type="hidden" />
+        <h3 data-people-form-title>Add new employee</h3>
+        <label><span>Name</span><input name="name" required /></label>
+        <label><span>Phone</span><input name="phone" type="tel" inputmode="tel" placeholder="Optional 10 digit phone" /></label>
+        <label><span>Email</span><input name="email" type="email" placeholder="Optional email" /></label>
+        <label class="people-check"><input name="active" type="checkbox" checked /><span>Active worker</span></label>
+        <div class="people-form-actions">
+          <button class="button" type="submit">Add Employee</button>
+          <button class="button button-secondary" type="button" data-clear-people-form>Clear Form</button>
+        </div>
+        <p class="form-status" data-people-status role="status"></p>
+      </form>
+    `;
+  }
+
+  return `
+    <form class="people-form" id="customer-record-form">
+      <input name="id" type="hidden" />
+      <h3 data-people-form-title>Add new customer</h3>
+      <div class="people-name-grid">
+        <label><span>First name</span><input name="firstName" required /></label>
+        <label><span>Last name</span><input name="lastName" required /></label>
+      </div>
+      <label><span>Phone</span><input name="phone" type="tel" inputmode="tel" placeholder="10 digit phone number" required /></label>
+      <label><span>Email</span><input name="email" type="email" placeholder="Optional email" /></label>
+      <label class="people-check"><input name="smsConsent" type="checkbox" /><span>Customer agreed to receive appointment texts</span></label>
+      <div class="people-form-actions">
+        <button class="button" type="submit">Add Customer</button>
+        <button class="button button-secondary" type="button" data-clear-people-form>Clear Form</button>
+      </div>
+      <p class="form-status" data-people-status role="status"></p>
+    </form>
+  `;
+}
+
+function renderPeopleWorkspace() {
+  const modal = document.querySelector("#people-modal");
+  if (!modal) return;
+
+  const records = peopleTab === "employees" ? peopleRecords.employees : peopleRecords.customers;
+  const list = records.length
+    ? records.map((record) => {
+        const name = peopleTab === "employees" ? record.name : `${record.firstName} ${record.lastName}`;
+        const details = [record.phone, record.email].filter(Boolean).join(" | ") || "No contact details";
+        const badge = peopleTab === "employees"
+          ? (record.active === false ? "Inactive" : "Active")
+          : (record.smsConsent ? "Texts allowed" : "No text consent");
+        return `
+          <article class="people-record">
+            <span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(details)}</small></span>
+            <em>${badge}</em>
+            <span class="people-record-actions">
+              <button type="button" data-edit-people-record="${escapeHtml(record.id)}">Edit</button>
+              ${peopleTab === "customers" || record.active !== false
+                ? `<button type="button" data-remove-people-record="${escapeHtml(record.id)}">Remove</button>`
+                : ""}
+            </span>
+          </article>
+        `;
+      }).join("")
+    : `<p class="slot-empty">No saved ${peopleTab} yet.</p>`;
+
+  modal.querySelector(".people-modal-body").innerHTML = `
+    <div class="people-layout">
+      <section class="people-list-panel">
+        <div class="people-list-heading">
+          <div><span>Saved records</span><strong>${records.length}</strong></div>
+          <div class="people-list-tools">
+            <input type="search" data-people-filter placeholder="Filter ${peopleTab}" aria-label="Filter ${peopleTab}" />
+            <button class="button button-secondary button-compact" type="button" data-clear-people-form>
+              Add ${peopleTab === "employees" ? "Employee" : "Customer"}
+            </button>
+          </div>
+        </div>
+        <div class="people-records">${list}</div>
+      </section>
+      ${peopleRecordForm()}
+    </div>
+  `;
+}
+
+async function loadPeopleRecords() {
+  const headers = { "X-Portal-Pin": portalPin };
+  const [employeesResponse, customersResponse] = await Promise.all([
+    fetch("/api/staff-records", { headers }),
+    fetch("/api/customers", { headers })
+  ]);
+  const employeesData = await employeesResponse.json();
+  const customersData = await customersResponse.json();
+
+  if (!employeesResponse.ok || !customersResponse.ok) {
+    throw new Error(employeesData.error || customersData.error || "Unable to load people records.");
+  }
+
+  peopleRecords = {
+    employees: employeesData.staff || [],
+    customers: customersData.customers || []
+  };
+}
+
+async function openPeopleModal(tab = "customers") {
+  peopleTab = tab;
+  settingsMenu.hidden = true;
+  managePeopleButton.setAttribute("aria-expanded", "false");
+  document.querySelector("#people-modal")?.remove();
+  const isEmployee = peopleTab === "employees";
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="cancel-modal people-modal" id="people-modal" role="dialog" aria-modal="true" aria-labelledby="people-title">
+      <div class="cancel-modal-card people-modal-card">
+        <div class="people-modal-head">
+          <div>
+            <span>Settings</span>
+            <h2 id="people-title">${isEmployee ? "Staff Management" : "Customer Database"}</h2>
+            <p>${isEmployee
+              ? "Workers saved here appear in customer booking, the salon calendar, and Manager scheduling."
+              : "This is the same saved-customer database used when staff search for a customer while creating an appointment."}</p>
+          </div>
+          <button class="button button-secondary button-compact" type="button" data-close-people>Close</button>
+        </div>
+        <div class="people-modal-body"><p>Loading records...</p></div>
+      </div>
+    </div>
+  `);
+
+  try {
+    await loadPeopleRecords();
+    renderPeopleWorkspace();
+  } catch (error) {
+    document.querySelector(".people-modal-body").innerHTML = `<p class="form-status" data-type="error">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function fillPeopleForm(recordId) {
+  const records = peopleTab === "employees" ? peopleRecords.employees : peopleRecords.customers;
+  const record = records.find((item) => item.id === recordId);
+  const form = document.querySelector(peopleTab === "employees" ? "#employee-record-form" : "#customer-record-form");
+  if (!record || !form) return;
+
+  Object.entries(record).forEach(([key, value]) => {
+    const field = form.elements[key];
+    if (!field) return;
+    if (field.type === "checkbox") field.checked = Boolean(value);
+    else field.value = value || "";
+  });
+  const title = form.querySelector("[data-people-form-title]");
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (title) title.textContent = `Edit ${peopleTab === "employees" ? "employee" : "customer"}`;
+  if (submitButton) submitButton.textContent = `Save ${peopleTab === "employees" ? "Employee" : "Customer"}`;
+  form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function filterPeopleRecords(query) {
+  const normalized = String(query || "").trim().toLowerCase();
+  document.querySelectorAll(".people-record").forEach((record) => {
+    record.hidden = Boolean(normalized) && !record.textContent.toLowerCase().includes(normalized);
+  });
+}
+
+function clearPeopleForm() {
+  const form = document.querySelector(peopleTab === "employees" ? "#employee-record-form" : "#customer-record-form");
+  if (!form) return;
+  form.reset();
+  form.elements.id.value = "";
+  if (peopleTab === "employees") form.elements.active.checked = true;
+  const title = form.querySelector("[data-people-form-title]");
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (title) title.textContent = `Add new ${peopleTab === "employees" ? "employee" : "customer"}`;
+  if (submitButton) submitButton.textContent = `Add ${peopleTab === "employees" ? "Employee" : "Customer"}`;
+  form.querySelector("input:not([type='hidden'])")?.focus();
+}
+
+async function removePeopleRecord(recordId) {
+  const isEmployee = peopleTab === "employees";
+  const records = isEmployee ? peopleRecords.employees : peopleRecords.customers;
+  const record = records.find((item) => item.id === recordId);
+  const name = isEmployee ? record?.name : `${record?.firstName || ""} ${record?.lastName || ""}`.trim();
+  const prompt = isEmployee
+    ? `Remove ${name} from active workers? Existing appointment history will stay saved.`
+    : `Remove ${name} from the saved customer database? Existing appointments will stay saved.`;
+
+  if (!record || !window.confirm(prompt)) return;
+
+  const endpoint = isEmployee ? "/api/staff-records" : "/api/customers";
+  const response = await fetch(`${endpoint}/${encodeURIComponent(recordId)}`, {
+    method: "DELETE",
+    headers: { "X-Portal-Pin": portalPin }
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    window.alert(result.error || "Unable to remove record.");
+    return;
+  }
+
+  if (isEmployee) {
+    await loadConfig();
+    await loadSchedule();
+    await loadBookings();
+  }
+  await loadPeopleRecords();
+  renderPeopleWorkspace();
 }
 
 function updateBookingDetailPanel() {
@@ -383,6 +711,8 @@ async function loadSchedule() {
   }
 
   scheduleData = data.schedule || { weekly: {}, overrides: {} };
+  scheduleDraft = cloneSchedule(scheduleData);
+  scheduleDraftOverrides = {};
 }
 
 async function loadBookings() {
@@ -578,7 +908,12 @@ function renderSchedule(columns, days, compact = false) {
     <div class="schedule-calendar" style="--calendar-minutes: ${totalMinutes}; --schedule-columns: ${columns.length};">
       <div class="schedule-header">
         <div class="schedule-corner"></div>
-        ${columns.map((column) => `<div class="schedule-heading">${escapeHtml(column.title)}</div>`).join("")}
+        ${columns.map((column) => `
+          <div class="schedule-heading ${column.isOff ? "schedule-heading-off" : ""}">
+            ${escapeHtml(column.title)}
+            ${column.isOff ? "<span>Off</span>" : ""}
+          </div>
+        `).join("")}
       </div>
       <div class="schedule-body">
         ${showCurrentTime ? `
@@ -598,11 +933,11 @@ function renderSchedule(columns, days, compact = false) {
         </div>
         ${columns.map((column) => {
           return `
-          <section class="schedule-column" aria-label="${escapeHtml(column.title)}">
+          <section class="schedule-column ${column.isOff ? "schedule-column-off" : ""}" aria-label="${escapeHtml(column.title)}${column.isOff ? " - off" : ""}">
             ${labels.map((minutes) => `
               <div class="schedule-line" style="--line-offset: ${Math.max(0, minutes - range.open)};"></div>
             `).join("")}
-            ${renderCreateSlots(column, range)}
+            ${column.isOff ? '<div class="schedule-off-message">Not working</div>' : renderCreateSlots(column, range)}
             ${groupedBookingsByTime(column.bookings).map((group) => renderScheduleEvent(group[0], range.open, compact, group.length, group)).join("")}
           </section>
         `;
@@ -629,12 +964,13 @@ function renderDay() {
   const selectedStaffId = calendarStaff.value || "all";
   const isSingleWorker = selectedStaffId !== "all";
   const visibleStaff = selectedStaffId === "all"
-    ? staff
+    ? staff.filter((person) => isStaffWorking(person, date))
     : staff.filter((person) => person.id === selectedStaffId);
   const columns = visibleStaff.map((person) => ({
     title: `${person.name} - ${displayDate(date)}`,
     date,
     staffId: person.id,
+    isOff: !isStaffWorking(person, date),
     bookings: bookings
       .filter((booking) => booking.date === date && booking.staffId === person.id)
       .sort((a, b) => a.time.localeCompare(b.time))
@@ -659,7 +995,7 @@ function renderDay() {
           ${renderSchedule(columns, [date], true)}
           ${renderBookingDetails()}
         </div>
-      ` : '<p class="slot-empty">No nail techs available.</p>'}
+      ` : '<p class="slot-empty">No workers are scheduled for this date.</p>'}
     </div>
   `;
 }
@@ -669,11 +1005,13 @@ function renderWeek() {
   const start = new Date(`${range.from}T12:00:00`);
   const days = Array.from({ length: 7 }, (_, index) => toIso(addDays(start, index)));
   const selectedStaffId = calendarStaff.value || "all";
-  const selectedStaffName = staff.find((person) => person.id === selectedStaffId)?.name;
+  const selectedStaff = staff.find((person) => person.id === selectedStaffId);
+  const selectedStaffName = selectedStaff?.name;
   const columns = days.map((day) => ({
     title: displayDate(day),
     date: day,
     staffId: selectedStaffId !== "all" ? selectedStaffId : "",
+    isOff: Boolean(selectedStaff && !isStaffWorking(selectedStaff, day)),
     bookings: bookings
       .filter((booking) => booking.date === day)
       .sort((a, b) => a.time.localeCompare(b.time))
@@ -887,18 +1225,56 @@ function renderMonth() {
 
 function isStaffWorking(person, dateString) {
   const day = new Date(`${dateString}T12:00:00`).getDay();
-  const override = scheduleData.overrides?.[dateString]?.[person.id];
+  const schedule = activeSchedule();
+  const override = schedule.overrides?.[dateString]?.[person.id];
 
   if (typeof override === "boolean") {
     return override;
   }
 
-  const weeklyDays = scheduleData.weekly?.[person.id] || person.workDays || [];
+  const weeklyDays = schedule.weekly?.[person.id] || person.workDays || [];
   return weeklyDays.includes(day);
 }
 
 function isWeeklyDayChecked(staffId, day) {
-  return (scheduleData.weekly?.[staffId] || []).includes(day);
+  return (activeSchedule().weekly?.[staffId] || []).includes(day);
+}
+
+function setDraftOverride(date, staffId, isWorking) {
+  scheduleDraft.overrides = scheduleDraft.overrides || {};
+  const day = new Date(`${date}T12:00:00`).getDay();
+  const weeklyValue = (scheduleDraft.weekly?.[staffId] || []).includes(day);
+  const savedOverride = scheduleData.overrides?.[date]?.[staffId];
+  const savedValue = typeof savedOverride === "boolean"
+    ? savedOverride
+    : (scheduleData.weekly?.[staffId] || []).includes(day);
+
+  scheduleDraft.overrides[date] = scheduleDraft.overrides[date] || {};
+  if (isWorking === weeklyValue) {
+    delete scheduleDraft.overrides[date][staffId];
+  } else {
+    scheduleDraft.overrides[date][staffId] = isWorking;
+  }
+  if (Object.keys(scheduleDraft.overrides[date]).length === 0) {
+    delete scheduleDraft.overrides[date];
+  }
+
+  if (isWorking === savedValue) {
+    delete scheduleDraftOverrides[date]?.[staffId];
+    if (scheduleDraftOverrides[date] && Object.keys(scheduleDraftOverrides[date]).length === 0) {
+      delete scheduleDraftOverrides[date];
+    }
+  } else {
+    scheduleDraftOverrides[date] = scheduleDraftOverrides[date] || {};
+    scheduleDraftOverrides[date][staffId] = isWorking;
+  }
+}
+
+function moveManagerWeek(direction) {
+  const current = new Date(`${calendarDate.value || todayIso()}T12:00:00`);
+  current.setDate(current.getDate() + direction * 7);
+  calendarDate.value = toIso(current);
+  renderCalendar();
 }
 
 function renderManager() {
@@ -975,12 +1351,22 @@ function renderManager() {
       </div>
 
       <section class="manager-panel manager-week-panel">
-        <h3>Selected week: ${displayDate(weekDates[0])} - ${displayDate(weekDates[6])}</h3>
+        <div class="manager-week-heading">
+          <button class="button button-secondary manager-week-button" type="button" data-manager-week-direction="-1" aria-label="Previous week">
+            <span aria-hidden="true">‹</span>
+            Previous
+          </button>
+          <h3>Selected week: ${displayDate(weekDates[0])} - ${displayDate(weekDates[6])}</h3>
+          <button class="button button-secondary manager-week-button" type="button" data-manager-week-direction="1" aria-label="Next week">
+            Next
+            <span aria-hidden="true">›</span>
+          </button>
+        </div>
         <p>Use this for one-week exceptions. Only boxes you change here are saved as date-specific changes.</p>
         <div class="week-override-table">
           <div class="week-override-header">
             <span>Employee</span>
-            ${weekDates.map((day) => `<span>${displayDate(day)}</span>`).join("")}
+            ${weekDates.map((day) => managerDateHeader(day)).join("")}
           </div>
           ${staff.map((person) => `
             <div class="week-override-row">
@@ -993,7 +1379,7 @@ function renderManager() {
                     data-week-date-staff="${escapeHtml(person.id)}"
                     ${isStaffWorking(person, day) ? "checked" : ""}
                   />
-                  <span>Working</span>
+                  <span>${new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: "short" })}</span>
                 </label>
               `).join("")}
             </div>
@@ -1058,12 +1444,20 @@ pinForm?.addEventListener("submit", async (event) => {
   }
 });
 
+async function switchCalendarView(nextView) {
+  viewButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.view === nextView));
+  view = nextView;
+  await loadBookings();
+}
+
 viewButtons.forEach((button) => {
   button.addEventListener("click", async () => {
-    viewButtons.forEach((item) => item.classList.remove("is-active"));
-    button.classList.add("is-active");
-    view = button.dataset.view;
-    await loadBookings();
+    const nextView = button.dataset.view;
+    if (view === "manager" && nextView !== "manager" && hasUnsavedScheduleChanges()) {
+      openUnsavedScheduleModal(nextView);
+      return;
+    }
+    await switchCalendarView(nextView);
   });
 });
 
@@ -1080,13 +1474,78 @@ refreshCalendar?.addEventListener("click", async () => {
   await loadBookings();
 });
 
+managePeopleButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const isOpen = settingsMenu.hidden;
+  settingsMenu.hidden = !isOpen;
+  managePeopleButton.setAttribute("aria-expanded", String(isOpen));
+});
+
 calendarDate.value = todayIso();
+
+async function saveScheduleDraft(statusElement = document.querySelector("#manager-status")) {
+  const saveButtons = document.querySelectorAll("#save-schedule, [data-manager-save-leave]");
+  const weekly = cloneSchedule(scheduleDraft.weekly || {});
+  const overrideDates = cloneSchedule(scheduleDraftOverrides);
+
+  saveButtons.forEach((button) => {
+    button.disabled = true;
+    button.dataset.originalText = button.textContent;
+    button.textContent = "Saving...";
+  });
+
+  try {
+    const response = await fetch("/api/schedule", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Portal-Pin": portalPin
+      },
+      body: JSON.stringify({
+        weekly,
+        ...(Object.keys(overrideDates).length ? { overrideDates } : {})
+      })
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to save schedule.");
+    }
+
+    scheduleData = data.schedule;
+    resetScheduleDraft();
+    if (statusElement) {
+      statusElement.textContent = "Schedule saved.";
+      statusElement.dataset.type = "";
+    }
+    return true;
+  } catch (error) {
+    if (statusElement) {
+      statusElement.textContent = error.message;
+      statusElement.dataset.type = "error";
+    }
+    return false;
+  } finally {
+    saveButtons.forEach((button) => {
+      button.disabled = false;
+      button.textContent = button.dataset.originalText || "Save Schedule";
+      delete button.dataset.originalText;
+    });
+  }
+}
 
 calendarBoard?.addEventListener("click", async (event) => {
   const maximizeButton = event.target.closest("[data-maximize-calendar]");
 
   if (maximizeButton) {
     toggleCalendarMaximize();
+    return;
+  }
+
+  const managerWeekButton = event.target.closest("[data-manager-week-direction]");
+
+  if (managerWeekButton) {
+    moveManagerWeek(Number(managerWeekButton.dataset.managerWeekDirection));
     return;
   }
 
@@ -1103,64 +1562,8 @@ calendarBoard?.addEventListener("click", async (event) => {
     return;
   }
 
-  const weekly = {};
-  const overrides = {};
-  const overrideDates = {};
-  const date = calendarDate.value || todayIso();
-  const managerStatus = document.querySelector("#manager-status");
-
-  staff.forEach((person) => {
-    weekly[person.id] = [...document.querySelectorAll(`[data-weekly-staff="${person.id}"]:checked`)]
-      .map((input) => Number(input.value));
-    const dateInput = document.querySelector(`[data-date-staff="${person.id}"]`);
-    if (dateInput?.dataset.dirty === "true") {
-      overrides[person.id] = Boolean(dateInput.checked);
-    }
-  });
-
-  document.querySelectorAll("[data-week-date]").forEach((input) => {
-    if (input.dataset.dirty !== "true") {
-      return;
-    }
-
-    const dateValue = input.dataset.weekDate;
-    const staffId = input.dataset.weekDateStaff;
-    overrideDates[dateValue] = overrideDates[dateValue] || {};
-    overrideDates[dateValue][staffId] = input.checked;
-  });
-
-  saveButton.disabled = true;
-  saveButton.textContent = "Saving...";
-
-  try {
-    const response = await fetch("/api/schedule", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Portal-Pin": portalPin
-      },
-      body: JSON.stringify({
-        weekly,
-        ...(Object.keys(overrides).length ? { date, overrides } : {}),
-        ...(Object.keys(overrideDates).length ? { overrideDates } : {})
-      })
-    });
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Unable to save schedule.");
-    }
-
-    scheduleData = data.schedule;
-    managerStatus.textContent = "Schedule saved.";
-    managerStatus.dataset.type = "";
+  if (await saveScheduleDraft()) {
     await loadBookings();
-  } catch (error) {
-    managerStatus.textContent = error.message;
-    managerStatus.dataset.type = "error";
-  } finally {
-    saveButton.disabled = false;
-    saveButton.textContent = "Save Schedule";
   }
 });
 
@@ -1207,19 +1610,54 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+window.addEventListener("beforeunload", (event) => {
+  if (view !== "manager" || !hasUnsavedScheduleChanges()) {
+    return;
+  }
+
+  event.preventDefault();
+  event.returnValue = "";
+});
+
 calendarBoard?.addEventListener("change", async (event) => {
   const weekInput = event.target.closest("#manager-week-date");
 
   if (weekInput) {
     calendarDate.value = weekInput.value || todayIso();
-    await loadBookings();
+    renderCalendar();
     return;
   }
 
-  const overrideInput = event.target.closest("[data-date-staff], [data-week-date]");
+  const weeklyInput = event.target.closest("[data-weekly-staff]");
 
-  if (overrideInput) {
-    overrideInput.dataset.dirty = "true";
+  if (weeklyInput) {
+    const staffId = weeklyInput.dataset.weeklyStaff;
+    const day = Number(weeklyInput.value);
+    const days = new Set(scheduleDraft.weekly?.[staffId] || []);
+    weeklyInput.checked ? days.add(day) : days.delete(day);
+    scheduleDraft.weekly = scheduleDraft.weekly || {};
+    scheduleDraft.weekly[staffId] = [...days].sort((a, b) => a - b);
+    renderCalendar();
+    return;
+  }
+
+  const dateInput = event.target.closest("[data-date-staff]");
+
+  if (dateInput) {
+    setDraftOverride(calendarDate.value || todayIso(), dateInput.dataset.dateStaff, dateInput.checked);
+    renderCalendar();
+    return;
+  }
+
+  const weekOverrideInput = event.target.closest("[data-week-date]");
+
+  if (weekOverrideInput) {
+    setDraftOverride(
+      weekOverrideInput.dataset.weekDate,
+      weekOverrideInput.dataset.weekDateStaff,
+      weekOverrideInput.checked
+    );
+    renderCalendar();
   }
 });
 
@@ -1438,6 +1876,14 @@ document.addEventListener("input", (event) => {
   }
 });
 
+document.addEventListener("change", (event) => {
+  const form = event.target.closest("#staff-booking-form");
+
+  if (form && event.target.matches("[name='service'], [name='date'], [name='time']")) {
+    updateStaffBookingClosingLimit(form);
+  }
+});
+
 document.addEventListener("submit", async (event) => {
   const form = event.target.closest("#staff-booking-form");
 
@@ -1496,6 +1942,68 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const settingsChoice = event.target.closest("[data-open-people]");
+  if (settingsChoice) {
+    await openPeopleModal(settingsChoice.dataset.openPeople);
+    return;
+  }
+
+  if (!event.target.closest(".settings-menu-wrap") && !settingsMenu.hidden) {
+    settingsMenu.hidden = true;
+    managePeopleButton.setAttribute("aria-expanded", "false");
+  }
+
+  if (event.target.closest("[data-manager-stay]")) {
+    closeUnsavedScheduleModal();
+    return;
+  }
+
+  if (event.target.closest("[data-manager-discard]")) {
+    const nextView = pendingManagerView;
+    resetScheduleDraft();
+    closeUnsavedScheduleModal();
+    await switchCalendarView(nextView);
+    return;
+  }
+
+  const saveAndLeave = event.target.closest("[data-manager-save-leave]");
+  if (saveAndLeave) {
+    const nextView = pendingManagerView;
+    const status = document.querySelector("#unsaved-schedule-status");
+    if (await saveScheduleDraft(status)) {
+      closeUnsavedScheduleModal();
+      await switchCalendarView(nextView);
+    }
+    return;
+  }
+
+  if (event.target.id === "unsaved-schedule-modal") {
+    closeUnsavedScheduleModal();
+    return;
+  }
+
+  if (event.target.closest("[data-close-people]") || event.target.id === "people-modal") {
+    document.querySelector("#people-modal")?.remove();
+    return;
+  }
+
+  const peopleRecord = event.target.closest("[data-edit-people-record]");
+  if (peopleRecord) {
+    fillPeopleForm(peopleRecord.dataset.editPeopleRecord);
+    return;
+  }
+
+  const removePeopleButton = event.target.closest("[data-remove-people-record]");
+  if (removePeopleButton) {
+    await removePeopleRecord(removePeopleButton.dataset.removePeopleRecord);
+    return;
+  }
+
+  if (event.target.closest("[data-clear-people-form]")) {
+    clearPeopleForm();
+    return;
+  }
+
   const selectedCustomer = event.target.closest("[data-select-customer]");
 
   if (selectedCustomer) {
@@ -1567,6 +2075,84 @@ document.addEventListener("click", async (event) => {
       status.textContent = error.message;
       status.dataset.type = "error";
     }
+  }
+});
+
+document.addEventListener("input", (event) => {
+  if (event.target.matches("[data-people-filter]")) {
+    filterPeopleRecords(event.target.value);
+  }
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("#employee-record-form, #customer-record-form");
+  if (!form) return;
+
+  event.preventDefault();
+  const status = form.querySelector("[data-people-status]");
+  const submitButton = form.querySelector('button[type="submit"]');
+  const data = Object.fromEntries(new FormData(form));
+  const isEmployee = form.id === "employee-record-form";
+  const id = data.id;
+  const endpoint = isEmployee ? "/api/staff-records" : "/api/customers";
+  const payload = isEmployee
+    ? { name: data.name, phone: data.phone, email: data.email, active: form.elements.active.checked }
+    : {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phone: data.phone,
+        email: data.email,
+        smsConsent: form.elements.smsConsent.checked
+      };
+
+  submitButton.disabled = true;
+  submitButton.textContent = "Saving...";
+  status.textContent = "";
+
+  try {
+    const response = await fetch(`${endpoint}${id ? `/${encodeURIComponent(id)}` : ""}`, {
+      method: id ? "PATCH" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Portal-Pin": portalPin
+      },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to save record.");
+    }
+
+    if (isEmployee) {
+      const hadDraft = hasUnsavedScheduleChanges();
+      const previousDraft = cloneSchedule(scheduleDraft);
+      const previousDraftOverrides = cloneSchedule(scheduleDraftOverrides);
+      await loadConfig();
+      const scheduleResponse = await fetch("/api/schedule", { headers: { "X-Portal-Pin": portalPin } });
+      const scheduleResult = await scheduleResponse.json();
+      scheduleData = scheduleResult.schedule;
+      if (hadDraft) {
+        scheduleDraft = {
+          weekly: { ...scheduleData.weekly, ...previousDraft.weekly },
+          overrides: { ...scheduleData.overrides, ...previousDraft.overrides }
+        };
+        scheduleDraftOverrides = previousDraftOverrides;
+      } else {
+        resetScheduleDraft();
+      }
+    }
+
+    await loadPeopleRecords();
+    renderPeopleWorkspace();
+    const nextForm = document.querySelector(isEmployee ? "#employee-record-form" : "#customer-record-form");
+    const nextStatus = nextForm?.querySelector("[data-people-status]");
+    if (nextStatus) nextStatus.textContent = `${isEmployee ? "Employee" : "Customer"} saved.`;
+  } catch (error) {
+    status.textContent = error.message;
+    status.dataset.type = "error";
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = isEmployee ? "Save Employee" : "Save Customer";
   }
 });
 

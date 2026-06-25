@@ -5,14 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Staff Portal | Dior Nails & Spa</title>
     <meta name="description" content="Dior Nails & Spa staff calendar portal." />
-    <link rel="stylesheet" href="styles.css?v=38" />
+    <link rel="stylesheet" href="styles.css?v=45" />
   </head>
   <body class="app-page staff-page">
     <header class="site-header" aria-label="Staff portal navigation">
       <a class="brand" href="index.html" aria-label="Dior Nails home">
         <span>Dior</span><strong>Nails</strong>
       </a>
-      <nav class="nav-links app-nav-links" aria-label="Staff menu">
+      <button class="menu-toggle" type="button" aria-controls="staff-menu" aria-expanded="false">
+        <span class="menu-toggle-lines" aria-hidden="true"></span>
+        <span class="sr-only">Open menu</span>
+      </button>
+      <nav class="nav-links app-nav-links" id="staff-menu" aria-label="Staff menu">
         <a href="booking.html">Customer Booking</a>
         <a href="index.html">Website</a>
       </nav>
@@ -39,7 +43,25 @@
             <h1>Salon calendar</h1>
             <p>See every customer, service, phone number, and assigned nail tech.</p>
           </div>
-          <button class="button button-secondary" type="button" id="refresh-calendar">Refresh</button>
+          <div class="staff-head-actions">
+            <div class="settings-menu-wrap">
+              <button class="settings-button" type="button" id="manage-people" aria-controls="settings-menu" aria-expanded="false" title="Settings">
+                <span aria-hidden="true">&#9881;</span>
+                <span>Settings</span>
+              </button>
+              <div class="settings-dropdown" id="settings-menu" hidden>
+                <button type="button" data-open-people="customers">
+                  <strong>Customers</strong>
+                  <span>Search, add, edit, or remove saved customers</span>
+                </button>
+                <button type="button" data-open-people="employees">
+                  <strong>Staff</strong>
+                  <span>Manage workers used by booking and schedules</span>
+                </button>
+              </div>
+            </div>
+            <button class="button button-secondary" type="button" id="refresh-calendar">Refresh</button>
+          </div>
         </div>
 
         <div class="calendar-toolbar" aria-label="Calendar controls">
@@ -83,6 +105,7 @@
       <p>Staff portal and booking system developed by RCI Development.</p>
     </footer>
 
-    <script src="staff.js?v=35"></script>
+    <script src="script.js?v=2"></script>
+    <script src="staff.js?v=41"></script>
   </body>
 </html>

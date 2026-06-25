@@ -1,0 +1,145 @@
+[
+  {
+    "id": "kevin",
+    "name": "Kevin",
+    "phone": "",
+    "email": "",
+    "active": true,
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "createdAt": "2026-06-25T16:26:40.114Z",
+    "updatedAt": "2026-06-25T16:26:40.117Z"
+  },
+  {
+    "id": "rumi",
+    "name": "Rumi",
+    "phone": "",
+    "email": "",
+    "active": true,
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "createdAt": "2026-06-25T16:26:40.117Z",
+    "updatedAt": "2026-06-25T16:26:40.117Z"
+  },
+  {
+    "id": "kvita",
+    "name": "Kvita",
+    "phone": "",
+    "email": "",
+    "active": true,
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "createdAt": "2026-06-25T16:26:40.117Z",
+    "updatedAt": "2026-06-25T16:26:40.117Z"
+  },
+  {
+    "id": "ana",
+    "name": "Ana",
+    "phone": "",
+    "email": "",
+    "active": true,
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "createdAt": "2026-06-25T16:26:40.118Z",
+    "updatedAt": "2026-06-25T16:26:40.118Z"
+  },
+  {
+    "id": "khrystyna",
+    "name": "Khrystyna",
+    "phone": "",
+    "email": "",
+    "active": true,
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "createdAt": "2026-06-25T16:26:40.118Z",
+    "updatedAt": "2026-06-25T16:26:40.118Z"
+  },
+  {
+    "id": "marta",
+    "name": "Marta",
+    "phone": "",
+    "email": "",
+    "active": true,
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "createdAt": "2026-06-25T16:26:40.118Z",
+    "updatedAt": "2026-06-25T16:26:40.118Z"
+  },
+  {
+    "id": "oksana",
+    "name": "Oksana",
+    "phone": "",
+    "email": "",
+    "active": true,
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "createdAt": "2026-06-25T16:26:40.118Z",
+    "updatedAt": "2026-06-25T16:26:40.118Z"
+  },
+  {
+    "id": "sandra",
+    "name": "Sandra",
+    "phone": "",
+    "email": "",
+    "active": true,
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "createdAt": "2026-06-25T16:26:40.118Z",
+    "updatedAt": "2026-06-25T16:26:40.118Z"
+  }
+]
