@@ -4,7 +4,12 @@
     "name": "Kevin",
     "phone": "(973) 864-0489",
     "email": "",
-    "active": true,
+    "color": {
+      "bg": "#ffe4e6",
+      "border": "#fb7185",
+      "ink": "#7f1d1d"
+    },
+    "active": false,
     "workDays": [
       0,
       1,
@@ -15,13 +20,18 @@
       6
     ],
     "createdAt": "2026-06-25T16:26:40.114Z",
-    "updatedAt": "2026-06-25T21:01:20.068Z"
+    "updatedAt": "2026-06-26T04:21:21.547Z"
   },
   {
     "id": "rumi",
     "name": "Rumi",
     "phone": "",
     "email": "",
+    "color": {
+      "bg": "#ffedd5",
+      "border": "#fb923c",
+      "ink": "#7c2d12"
+    },
     "active": true,
     "workDays": [
       0,
@@ -39,6 +49,11 @@
     "name": "Kvita",
     "phone": "",
     "email": "",
+    "color": {
+      "bg": "#fef9c3",
+      "border": "#eab308",
+      "ink": "#713f12"
+    },
     "active": true,
     "workDays": [
       0,
@@ -57,6 +72,11 @@
     "name": "Ana",
     "phone": "",
     "email": "",
+    "color": {
+      "bg": "#dcfce7",
+      "border": "#4ade80",
+      "ink": "#14532d"
+    },
     "active": true,
     "workDays": [
       0,
@@ -75,6 +95,11 @@
     "name": "Khrystyna",
     "phone": "",
     "email": "",
+    "color": {
+      "bg": "#dbeafe",
+      "border": "#60a5fa",
+      "ink": "#1e3a8a"
+    },
     "active": true,
     "workDays": [
       0,
@@ -93,6 +118,11 @@
     "name": "Marta",
     "phone": "",
     "email": "",
+    "color": {
+      "bg": "#ede9fe",
+      "border": "#a78bfa",
+      "ink": "#4c1d95"
+    },
     "active": true,
     "workDays": [
       0,
@@ -111,6 +141,11 @@
     "name": "Oksana",
     "phone": "",
     "email": "",
+    "color": {
+      "bg": "#fce7f3",
+      "border": "#f472b6",
+      "ink": "#831843"
+    },
     "active": true,
     "workDays": [
       0,
@@ -129,6 +164,11 @@
     "name": "Sandra",
     "phone": "",
     "email": "",
+    "color": {
+      "bg": "#cffafe",
+      "border": "#22d3ee",
+      "ink": "#164e63"
+    },
     "active": true,
     "workDays": [
       0,

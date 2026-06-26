@@ -98,6 +98,15 @@ function displayDate(value) {
   return `${weekday} ${month}/${day}/${year}`;
 }
 
+function displayShortDate(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T12:00:00`);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${month}/${day}/${year}`;
+}
+
 function managerDateHeader(value) {
   const date = new Date(`${value}T12:00:00`);
   const weekday = date.toLocaleDateString([], { weekday: "long" });
@@ -599,7 +608,8 @@ function peopleRecordForm() {
       </div>
       <label><span>Phone</span><input name="phone" type="tel" inputmode="tel" placeholder="10 digit phone number" required /></label>
       <label><span>Email</span><input name="email" type="email" placeholder="Optional email" /></label>
-      <label class="people-check"><input name="smsConsent" type="checkbox" /><span>Customer agreed to receive appointment texts</span></label>
+      <label><span>Date of birth</span><input name="birthday" type="date" /></label>
+      <label class="people-check"><input name="smsConsent" type="checkbox" /><span>Customer agreed to receive appointment confirmations, reminders, account/check-in updates, birthday-week gifts, and salon offers by text. Message/data rates may apply; reply STOP to opt out.</span></label>
       <div class="people-form-actions">
         <button class="button" type="button" data-save-people>Add Customer</button>
         <button class="button button-secondary" type="button" data-clear-people-form>Clear Form</button>
@@ -631,16 +641,20 @@ function renderPeopleWorkspace() {
             ]
           : [
               record.phone ? `Phone: ${record.phone}` : "",
-              record.email ? `Email: ${record.email}` : ""
+              record.email ? `Email: ${record.email}` : "",
+              peopleTab === "customers" && record.birthday ? `Birthday: ${displayShortDate(record.birthday)}` : ""
             ].filter(Boolean);
         const scheduledDays = peopleTab === "employees"
           ? weekDatesFor(calendarDate.value || todayIso()).filter((date) => isStaffWorking(record, date)).length
           : 0;
         const badge = peopleTab === "employees"
-          ? `${scheduledDays} days this week`
+          ? `
+              <span>${scheduledDays} days this week</span>
+              <span>${record.active === false ? "Inactive worker" : "Active worker"}</span>
+            `
           : peopleTab === "services"
-            ? (record.active === false ? "Not bookable" : "Bookable")
-            : (record.smsConsent ? "Texts allowed" : "No text consent");
+            ? escapeHtml(record.active === false ? "Not bookable" : "Bookable")
+            : escapeHtml(record.smsConsent ? "Texts allowed" : "No text consent");
         return `
           <article class="people-record" data-people-search="${escapeHtml(peopleSearchText(record))}">
             <div class="people-record-info">
@@ -650,7 +664,7 @@ function renderPeopleWorkspace() {
                   .map((detail) => `<small>${escapeHtml(detail)}</small>`).join("")}
               </div>
             </div>
-            <em>${escapeHtml(badge)}</em>
+            <em>${badge}</em>
             <span class="people-record-actions">
               <button type="button" data-edit-people-record="${escapeHtml(record.id)}">Edit</button>
               <button type="button" data-remove-people-record="${escapeHtml(record.id)}">Remove</button>
@@ -721,7 +735,7 @@ function peopleSearchText(record) {
     ? [record.name, record.category, record.price, record.durationMinutes]
     : peopleTab === "employees"
       ? [record.name, record.phone, record.email]
-      : [record.firstName, record.lastName, `${record.firstName || ""} ${record.lastName || ""}`, record.phone, record.email];
+      : [record.firstName, record.lastName, `${record.firstName || ""} ${record.lastName || ""}`, record.phone, record.email, record.birthday, displayShortDate(record.birthday)];
   return fields
     .filter((value) => value !== undefined && value !== null)
     .join(" ")
@@ -2477,6 +2491,7 @@ async function savePeopleForm(form) {
         lastName: data.lastName,
         phone: data.phone,
         email: data.email,
+        birthday: data.birthday,
         smsConsent: data.smsConsent === "on"
       };
 

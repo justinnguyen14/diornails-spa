@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Customer Check In | Dior Nails & Spa</title>
+    <meta name="description" content="Dior Nails & Spa customer check-in kiosk." />
+    <link rel="stylesheet" href="styles.css?v=56" />
+  </head>
+  <body class="app-page checkin-page">
+    <header class="site-header checkin-header" aria-label="Check-in navigation">
+      <a class="brand" href="index.html" aria-label="Dior Nails home">
+        <span>Dior</span><strong>Nails</strong>
+      </a>
+      <a class="button button-small" href="booking.html">Book Appointment</a>
+    </header>
+
+    <main class="checkin-shell">
+      <section class="checkin-card" aria-labelledby="checkin-title">
+        <div class="checkin-intro">
+          <span>Customer check-in</span>
+          <h1 id="checkin-title">Welcome to Dior Nails</h1>
+          <p>Enter your phone number to check in and collect your visit point. Appointments and walk-ins are both welcome.</p>
+        </div>
+
+        <form class="checkin-phone-form" id="checkin-phone-form">
+          <label>
+            <span>Phone number</span>
+            <input
+              name="phone"
+              type="tel"
+              inputmode="tel"
+              autocomplete="tel"
+              placeholder="10 digit phone number"
+              maxlength="14"
+              readonly
+              required
+            />
+          </label>
+          <div class="phone-dial-pad" aria-label="Phone number keypad">
+            <button type="button" data-dial-number="1">1</button>
+            <button type="button" data-dial-number="2">2</button>
+            <button type="button" data-dial-number="3">3</button>
+            <button type="button" data-dial-number="4">4</button>
+            <button type="button" data-dial-number="5">5</button>
+            <button type="button" data-dial-number="6">6</button>
+            <button type="button" data-dial-number="7">7</button>
+            <button type="button" data-dial-number="8">8</button>
+            <button type="button" data-dial-number="9">9</button>
+            <button type="button" data-dial-action="clear">Clear</button>
+            <button type="button" data-dial-number="0">0</button>
+            <button type="button" data-dial-action="backspace">Delete</button>
+          </div>
+          <button class="button" type="submit">Check In</button>
+        </form>
+
+        <form class="checkin-profile-form is-hidden" id="checkin-profile-form">
+          <div class="checkin-form-heading">
+            <h2>Create your profile</h2>
+            <p>This saves your information for faster appointments and future text updates.</p>
+          </div>
+          <div class="form-grid">
+            <label>
+              <span>First name</span>
+              <input name="firstName" autocomplete="given-name" required />
+            </label>
+            <label>
+              <span>Last name</span>
+              <input name="lastName" autocomplete="family-name" required />
+            </label>
+            <label>
+              <span>Email (optional)</span>
+              <input name="email" type="email" autocomplete="email" placeholder="name@example.com" />
+            </label>
+            <label>
+              <span>Birthday (optional)</span>
+              <input name="birthday" type="date" />
+            </label>
+          </div>
+          <input name="phone" type="hidden" />
+          <label class="sms-consent">
+            <input name="profileConsent" type="checkbox" value="true" required />
+            <span>
+              I agree that Dior Nails &amp; Spa may save my customer profile, phone number, birthday, visit history, check-in history, and appointment information.
+            </span>
+          </label>
+          <label class="sms-consent">
+            <input name="smsConsent" type="checkbox" value="true" />
+            <span>
+              I agree to receive appointment confirmations, reminders, account/check-in updates, holiday closure notices, birthday-week gifts, and salon offers by text. Message and data rates may apply. Reply STOP to opt out.
+            </span>
+          </label>
+          <div class="checkin-actions">
+            <button class="button" type="submit">Create Profile & Check In</button>
+            <button class="button button-secondary" type="button" id="checkin-start-over">Use A Different Number</button>
+          </div>
+        </form>
+
+        <form class="checkin-birthday-form is-hidden" id="checkin-birthday-form">
+          <div class="checkin-form-heading">
+            <h2>Add your birthday</h2>
+            <p>Add your birthday so Dior Nails &amp; Spa can send birthday-week gifts and discounts.</p>
+          </div>
+          <input name="customerId" type="hidden" />
+          <input name="phone" type="hidden" />
+          <label>
+            <span>Date of birth</span>
+            <input name="birthday" type="date" required />
+          </label>
+          <div class="checkin-actions">
+            <button class="button" type="submit">Save Birthday & Check In</button>
+            <button class="button button-secondary" type="button" id="checkin-skip-birthday">Skip For Now</button>
+          </div>
+        </form>
+
+        <section class="checkin-result is-hidden" id="checkin-result" aria-live="polite"></section>
+        <p class="form-status" id="checkin-status" role="status"></p>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>&copy; 2026 Dior Nails &amp; Spa. All rights reserved.</p>
+      <p>Check-in and booking system developed by RCI Development.</p>
+    </footer>
+
+    <script src="checkin.js?v=5"></script>
+  </body>
+</html>

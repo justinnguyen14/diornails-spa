@@ -12,6 +12,7 @@ const SCHEDULE_FILE = path.join(DATA_DIR, "schedule.json");
 const CUSTOMERS_FILE = path.join(DATA_DIR, "customers.json");
 const STAFF_FILE = path.join(DATA_DIR, "staff.json");
 const SERVICES_FILE = path.join(DATA_DIR, "services.json");
+const CHECKINS_FILE = path.join(DATA_DIR, "checkins.json");
 const PUBLIC_DIR = __dirname;
 
 loadEnvFile();
@@ -381,6 +382,10 @@ function ensureStore() {
     fs.writeFileSync(CUSTOMERS_FILE, "[]\n");
   }
 
+  if (!fs.existsSync(CHECKINS_FILE)) {
+    fs.writeFileSync(CHECKINS_FILE, "[]\n");
+  }
+
   if (!fs.existsSync(STAFF_FILE)) {
     writeStaffRecords(initialNailTechs);
   }
@@ -410,6 +415,16 @@ function writeCustomers(customers) {
   fs.writeFileSync(CUSTOMERS_FILE, `${JSON.stringify(customers, null, 2)}\n`);
 }
 
+function readCheckins() {
+  ensureStore();
+  return JSON.parse(fs.readFileSync(CHECKINS_FILE, "utf8"));
+}
+
+function writeCheckins(checkins) {
+  ensureStore();
+  fs.writeFileSync(CHECKINS_FILE, `${JSON.stringify(checkins, null, 2)}\n`);
+}
+
 function upsertCustomer(input) {
   const firstName = String(input.firstName || "").trim();
   const lastName = String(input.lastName || "").trim();
@@ -436,6 +451,9 @@ function upsertCustomer(input) {
     customerName: `${firstName} ${lastName}`.trim(),
     phone,
     email: String(input.email || existing.email || "").trim().toLowerCase(),
+    birthday: Object.prototype.hasOwnProperty.call(input, "birthday")
+      ? String(input.birthday || "").trim()
+      : String(existing.birthday || "").trim(),
     smsConsent,
     smsConsentAt: smsConsent ? existing.smsConsentAt || new Date().toISOString() : "",
     createdAt: existing.createdAt || new Date().toISOString(),
@@ -452,12 +470,150 @@ function upsertCustomer(input) {
   return customer;
 }
 
+function customerPublicProfile(customer) {
+  return {
+    id: customer.id,
+    firstName: customer.firstName || "",
+    lastName: customer.lastName || "",
+    customerName: customer.customerName || `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
+    phone: customer.phone || "",
+    email: customer.email || "",
+    birthday: customer.birthday || "",
+    smsConsent: Boolean(customer.smsConsent),
+    checkInCount: Number(customer.checkInCount || 0),
+    lastCheckInDate: customer.lastCheckInDate || ""
+  };
+}
+
+function findCustomersByPhone(phone) {
+  const digits = phoneDigits(phone);
+  return readCustomers().filter((customer) => phoneDigits(customer.phone) === digits);
+}
+
+function todaysAppointmentsForPhone(phone) {
+  const today = localTodayIso();
+  const digits = phoneDigits(phone);
+  return readBookings()
+    .filter((booking) => (
+      booking.status !== "cancelled" &&
+      booking.date === today &&
+      phoneDigits(booking.phone) === digits
+    ))
+    .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")))
+    .map((booking) => ({
+      id: booking.id,
+      service: booking.service,
+      staffName: booking.staffName,
+      time: booking.time,
+      durationMinutes: booking.durationMinutes || durationForService(booking.service)
+    }));
+}
+
+function checkinCountForCustomer(customerId, phone) {
+  const digits = phoneDigits(phone);
+  return readCheckins().filter((checkin) => (
+    (customerId && checkin.customerId === customerId) ||
+    (!customerId && phoneDigits(checkin.phone) === digits)
+  )).length;
+}
+
+function recordCheckinForCustomer(customer, source = "checkin") {
+  const today = localTodayIso();
+  const digits = phoneDigits(customer.phone);
+  const checkins = readCheckins();
+  const existingToday = checkins.find((checkin) => (
+    checkin.date === today &&
+    (
+      (customer.id && checkin.customerId === customer.id) ||
+      phoneDigits(checkin.phone) === digits
+    )
+  ));
+
+  const total = checkinCountForCustomer(customer.id, customer.phone);
+
+  if (existingToday) {
+    return {
+      alreadyCheckedIn: true,
+      checkin: existingToday,
+      points: total,
+      appointments: todaysAppointmentsForPhone(customer.phone)
+    };
+  }
+
+  const checkin = {
+    id: `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    customerId: customer.id || "",
+    customerName: customer.customerName || `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
+    phone: displayPhone(customer.phone),
+    date: today,
+    pointsAwarded: 1,
+    source,
+    createdAt: new Date().toISOString()
+  };
+  checkins.push(checkin);
+  writeCheckins(checkins);
+
+  const customers = readCustomers();
+  const index = customers.findIndex((record) => record.id === customer.id);
+  if (index >= 0) {
+    customers[index] = {
+      ...customers[index],
+      checkInCount: total + 1,
+      lastCheckInDate: today,
+      updatedAt: new Date().toISOString()
+    };
+    writeCustomers(customers);
+  }
+
+  return {
+    alreadyCheckedIn: false,
+    checkin,
+    points: total + 1,
+    appointments: todaysAppointmentsForPhone(customer.phone)
+  };
+}
+
+function updateCustomerProfile(customerId, input) {
+  const customers = readCustomers();
+  const index = customers.findIndex((customer) => customer.id === customerId);
+  if (index < 0) return null;
+
+  const smsConsent = Object.prototype.hasOwnProperty.call(input, "smsConsent")
+    ? booleanValue(input.smsConsent)
+    : Boolean(customers[index].smsConsent);
+
+  customers[index] = {
+    ...customers[index],
+    email: String(input.email || customers[index].email || "").trim().toLowerCase(),
+    birthday: Object.prototype.hasOwnProperty.call(input, "birthday")
+      ? String(input.birthday || "").trim()
+      : String(customers[index].birthday || "").trim(),
+    smsConsent,
+    smsConsentAt: smsConsent ? customers[index].smsConsentAt || new Date().toISOString() : "",
+    updatedAt: new Date().toISOString()
+  };
+  writeCustomers(customers);
+  return customers[index];
+}
+
+function findCustomerByIdAndPhone(customerId, phone) {
+  const digits = phoneDigits(phone);
+  return readCustomers().find((customer) => (
+    customer.id === customerId &&
+    phoneDigits(customer.phone) === digits
+  ));
+}
+
 function syncCustomersFromBookings() {
   const bookings = readBookings();
   const customers = readCustomers();
   let changed = false;
 
   bookings.forEach((booking) => {
+    if (booking.status === "cancelled") {
+      return;
+    }
+
     const digits = phoneDigits(booking.phone);
     const parts = bookingNameParts(booking);
 
@@ -1225,6 +1381,157 @@ async function handleApi(req, res, pathname, searchParams) {
     return;
   }
 
+  if (req.method === "POST" && pathname === "/api/checkins/lookup") {
+    const input = await readJson(req);
+    const digits = phoneDigits(input.phone);
+
+    if (digits.length !== 10) {
+      sendJson(res, 400, { error: "Please enter a full 10 digit phone number." });
+      return;
+    }
+
+    const matches = findCustomersByPhone(input.phone);
+    const appointments = todaysAppointmentsForPhone(input.phone);
+
+    if (!matches.length) {
+      sendJson(res, 200, {
+        needsProfile: true,
+        phone: displayPhone(input.phone),
+        appointments,
+        message: "Create a quick profile to finish checking in."
+      });
+      return;
+    }
+
+    const customer = matches[0];
+
+    if (!String(customer.birthday || "").trim()) {
+      sendJson(res, 200, {
+        needsBirthday: true,
+        customer: customerPublicProfile(customer),
+        phone: displayPhone(input.phone),
+        appointments,
+        message: "Add your birthday to receive birthday-week gifts and discounts."
+      });
+      return;
+    }
+
+    const result = recordCheckinForCustomer(customer);
+    sendJson(res, 200, {
+      needsProfile: false,
+      alreadyCheckedIn: result.alreadyCheckedIn,
+      customer: customerPublicProfile({
+        ...customer,
+        checkInCount: result.points,
+        lastCheckInDate: localTodayIso()
+      }),
+      points: result.points,
+      appointments: result.appointments,
+      message: result.alreadyCheckedIn ? "You are already checked in for today." : "Welcome back!"
+    });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/checkins/birthday") {
+    const input = await readJson(req);
+    const customerId = String(input.customerId || "").trim();
+    const digits = phoneDigits(input.phone);
+
+    if (!customerId || digits.length !== 10) {
+      sendJson(res, 400, { error: "Customer and phone number are required." });
+      return;
+    }
+
+    let customer = findCustomerByIdAndPhone(customerId, input.phone);
+
+    if (!customer) {
+      sendJson(res, 404, { error: "Customer not found." });
+      return;
+    }
+
+    const birthday = String(input.birthday || "").trim();
+    if (!booleanValue(input.skipBirthday) && !birthday) {
+      sendJson(res, 400, { error: "Please add a birthday or choose skip for now." });
+      return;
+    }
+
+    if (birthday) {
+      customer = updateCustomerProfile(customer.id, { birthday }) || customer;
+    }
+
+    const result = recordCheckinForCustomer(customer, birthday ? "birthday-updated" : "birthday-skipped");
+    sendJson(res, 200, {
+      needsProfile: false,
+      needsBirthday: false,
+      alreadyCheckedIn: result.alreadyCheckedIn,
+      customer: customerPublicProfile({
+        ...customer,
+        checkInCount: result.points,
+        lastCheckInDate: localTodayIso()
+      }),
+      points: result.points,
+      appointments: result.appointments,
+      message: result.alreadyCheckedIn ? "You are already checked in for today." : "Welcome back!"
+    });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/checkins/profile") {
+    const input = await readJson(req);
+    const firstName = String(input.firstName || "").trim();
+    const lastName = String(input.lastName || "").trim();
+    const digits = phoneDigits(input.phone);
+
+    if (!firstName || !lastName || digits.length !== 10) {
+      sendJson(res, 400, { error: "First name, last name, and a full 10 digit phone number are required." });
+      return;
+    }
+
+    if (String(input.email || "").trim() && !isValidEmail(input.email)) {
+      sendJson(res, 400, { error: "Please enter a valid email address." });
+      return;
+    }
+
+    if (!booleanValue(input.profileConsent)) {
+      sendJson(res, 400, { error: "Please agree to save your customer profile before checking in." });
+      return;
+    }
+
+    let customer = upsertCustomer({
+      firstName,
+      lastName,
+      phone: input.phone,
+      email: input.email,
+      smsConsent: input.smsConsent
+    });
+
+    if (!customer) {
+      sendJson(res, 400, { error: "Unable to save this customer profile." });
+      return;
+    }
+
+    customer = updateCustomerProfile(customer.id, {
+      email: input.email,
+      birthday: input.birthday,
+      smsConsent: input.smsConsent
+    }) || customer;
+
+    const result = recordCheckinForCustomer(customer, "new-profile");
+    sendJson(res, 201, {
+      needsProfile: false,
+      alreadyCheckedIn: result.alreadyCheckedIn,
+      customer: customerPublicProfile({
+        ...customer,
+        checkInCount: result.points,
+        lastCheckInDate: localTodayIso()
+      }),
+      points: result.points,
+      appointments: result.appointments,
+      message: result.alreadyCheckedIn ? "Your profile is saved and you are already checked in today." : "Thank you for joining us and welcome!"
+    });
+    return;
+  }
+
   if (req.method === "GET" && pathname === "/api/availability") {
     const date = searchParams.get("date");
     const staffId = searchParams.get("staffId") || "any";
@@ -1322,6 +1629,7 @@ async function handleApi(req, res, pathname, searchParams) {
       customerName: `${firstName} ${lastName}`,
       phone: displayPhone(input.phone),
       email: String(input.email || "").trim().toLowerCase(),
+      birthday: String(input.birthday || "").trim(),
       smsConsent: booleanValue(input.smsConsent),
       smsConsentAt: booleanValue(input.smsConsent) ? new Date().toISOString() : "",
       createdAt: new Date().toISOString(),
@@ -1367,6 +1675,7 @@ async function handleApi(req, res, pathname, searchParams) {
       customerName: `${firstName} ${lastName}`,
       phone: displayPhone(input.phone),
       email: String(input.email || "").trim().toLowerCase(),
+      birthday: String(input.birthday || customers[index].birthday || "").trim(),
       smsConsent,
       smsConsentAt: smsConsent ? customers[index].smsConsentAt || new Date().toISOString() : "",
       updatedAt: new Date().toISOString()

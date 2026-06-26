@@ -1,0 +1,32 @@
+[
+  {
+    "id": "chk_1782448729046_538aff3d63f4d8",
+    "customerId": "cus_1782358856669_21a73ebf276b18",
+    "customerName": "Justin Nguyen",
+    "phone": "(973) 906-3071",
+    "date": "2026-06-26",
+    "pointsAwarded": 1,
+    "source": "checkin",
+    "createdAt": "2026-06-26T04:38:49.047Z"
+  },
+  {
+    "id": "chk_1782448926020_5e327bb1dd09c8",
+    "customerId": "cus_1782414820442_4f51d1c8e05af",
+    "customerName": "Chanel Nguyen",
+    "phone": "(973) 668-2265",
+    "date": "2026-06-26",
+    "pointsAwarded": 1,
+    "source": "checkin",
+    "createdAt": "2026-06-26T04:42:06.020Z"
+  },
+  {
+    "id": "chk_1782449009067_9c9905f99dd81",
+    "customerId": "cus_1782449009019_3e65a267ba404",
+    "customerName": "Krupal Patel",
+    "phone": "(551) 247-9195",
+    "date": "2026-06-26",
+    "pointsAwarded": 1,
+    "source": "new-profile",
+    "createdAt": "2026-06-26T04:43:29.067Z"
+  }
+]
