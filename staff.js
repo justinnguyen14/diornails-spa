@@ -428,6 +428,8 @@ function updateStaffBookingClosingLimit(form) {
   const duration = Number(serviceDurations[serviceInput.value] || 0);
 
   if (!dateInput.value || !duration) {
+    timeInput.removeAttribute("min");
+    timeInput.removeAttribute("max");
     timeInput.setCustomValidity("");
     helper.textContent = "Choose a service to calculate the latest available start time.";
     return;
@@ -439,16 +441,14 @@ function updateStaffBookingClosingLimit(form) {
   const latestStart = openingMinutes + Math.floor((latestUnalignedStart - openingMinutes) / 15) * 15;
   const latestTime = minutesToTime(latestStart);
   timeInput.min = hours.open;
-  timeInput.max = latestTime;
+  timeInput.max = hours.close;
   const selectedMinutes = timeInput.value ? timeToMinutes(timeInput.value) : -1;
   const fits = selectedMinutes >= openingMinutes && selectedMinutes <= latestStart && (selectedMinutes - openingMinutes) % 15 === 0;
 
-  timeInput.setCustomValidity(
-    !timeInput.value || fits
-      ? ""
-      : `Choose a start time no later than ${displayTime(latestTime)} so this service finishes by ${displayTime(hours.close)}.`
-  );
-  helper.textContent = `This service must start by ${displayTime(latestTime)} to finish before the ${displayTime(hours.close)} closing time.`;
+  timeInput.setCustomValidity("");
+  helper.textContent = fits || !timeInput.value
+    ? `This service should start by ${displayTime(latestTime)} to finish before the ${displayTime(hours.close)} closing time.`
+    : `This service normally needs to start by ${displayTime(latestTime)}. Submit to review the constraint, then choose Book Anyway if needed.`;
 }
 
 function openStaffBookingModal({ date, time, staffId = "" }) {
@@ -546,6 +546,7 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
 
           <div class="staff-booking-actions">
             <button class="button" type="submit">Create Appointment</button>
+            <button class="button button-warning is-hidden" type="button" data-bypass-staff-booking>Book Anyway</button>
             <button class="button button-secondary" type="button" data-close-staff-booking>Cancel</button>
           </div>
           <p class="form-status" id="staff-booking-status" role="status"></p>
@@ -1054,6 +1055,7 @@ function bookingCard(booking) {
       <a href="tel:${booking.phone}">${booking.phone}</a>
       ${booking.email ? `<a href="mailto:${booking.email}">${booking.email}</a>` : ""}
       ${notes}
+      ${checkInBadge(booking)}
     </article>
   `;
 }
@@ -1070,6 +1072,47 @@ function appointmentEndTime(booking) {
 
 function appointmentTimeRange(booking) {
   return `${displayTime(booking.time)} - ${displayTime(appointmentEndTime(booking))}`;
+}
+
+function bookingHasEnded(booking) {
+  const today = todayIso();
+  if (booking.date < today) return true;
+  if (booking.date > today) return false;
+  return timeToMinutes(appointmentEndTime(booking)) <= salonCurrentMinutes();
+}
+
+function checkInState(booking) {
+  if (booking.checkInStatus === "checked-in") {
+    return {
+      status: "checked-in",
+      label: "Checked in",
+      mark: "✓"
+    };
+  }
+
+  if (bookingHasEnded(booking)) {
+    return {
+      status: "missed",
+      label: "No check-in",
+      mark: "×"
+    };
+  }
+
+  return {
+    status: "pending",
+    label: "Not checked in",
+    mark: ""
+  };
+}
+
+function checkInBadge(booking, compact = false) {
+  const state = checkInState(booking);
+  return `
+    <span class="checkin-badge checkin-badge-${state.status} ${compact ? "checkin-badge-compact" : ""}" title="${escapeHtml(state.label)}">
+      <span aria-hidden="true">${state.mark}</span>
+      ${compact ? "" : `<strong>${escapeHtml(state.label)}</strong>`}
+    </span>
+  `;
 }
 
 function scheduleLabels(open, close) {
@@ -1111,6 +1154,7 @@ function renderScheduleEvent(booking, open, compact = false, overlapCount = 1, g
       type="button"
       data-booking-id="${escapeHtml(booking.id)}"
     >
+      ${checkInBadge(booking, true)}
       <strong>${appointmentTimeRange(booking)} ${escapeHtml(booking.customerName)}${countBadge}</strong>
       <span>${escapeHtml(overlapCount > 1 ? groupSummary : booking.service)}</span>
       <span>${escapeHtml(overlapCount > 1 ? "Click to choose appointment" : booking.staffName)}</span>
@@ -1426,6 +1470,7 @@ function renderBookingDetails() {
         </div>
       </div>
       <dl>
+        <div><dt>Check-in</dt><dd>${checkInBadge(booking)}</dd></div>
         <div><dt>Service</dt><dd>${escapeHtml(booking.service)}</dd></div>
         <div><dt>Nail tech</dt><dd>${escapeHtml(booking.staffName)}</dd></div>
         <div><dt>Time reserved</dt><dd>${appointmentTimeRange(booking)} (${Number(booking.durationMinutes || 60)} minutes)</dd></div>
@@ -2177,6 +2222,7 @@ document.addEventListener("input", (event) => {
   const serviceSearch = event.target.closest("#staff-booking-service");
   if (serviceSearch) {
     const form = serviceSearch.closest("#staff-booking-form");
+    resetStaffBookingBypass(form);
     const menu = form?.querySelector("#staff-booking-service-options");
     if (menu) {
       menu.innerHTML = staffBookingServiceOptions(serviceSearch.value);
@@ -2190,6 +2236,7 @@ document.addEventListener("input", (event) => {
   const workerSearch = event.target.closest("#staff-booking-worker");
   if (workerSearch) {
     const form = workerSearch.closest("#staff-booking-form");
+    resetStaffBookingBypass(form);
     const menu = form?.querySelector("#staff-booking-worker-options");
     form.querySelector("#staff-booking-worker-id").value = "";
     if (menu) {
@@ -2203,6 +2250,7 @@ document.addEventListener("input", (event) => {
   const phoneInput = event.target.closest("#staff-booking-form input[name='phone']");
 
   if (phoneInput) {
+    resetStaffBookingBypass(phoneInput.closest("#staff-booking-form"));
     phoneInput.value = formatPhone(phoneInput.value);
   }
 });
@@ -2233,10 +2281,28 @@ document.addEventListener("focusin", (event) => {
 document.addEventListener("change", (event) => {
   const form = event.target.closest("#staff-booking-form");
 
-  if (form && event.target.matches("[name='service'], [name='date'], [name='time']")) {
-    updateStaffBookingClosingLimit(form);
+  if (form) {
+    resetStaffBookingBypass(form);
+    if (event.target.matches("[name='service'], [name='date'], [name='time']")) {
+      updateStaffBookingClosingLimit(form);
+    }
   }
 });
+
+function resetStaffBookingBypass(form) {
+  if (!form) return;
+  form.dataset.bypassConstraints = "";
+  form.querySelector("[data-bypass-staff-booking]")?.classList.add("is-hidden");
+}
+
+function showStaffBookingBypass(form, message) {
+  const status = form.querySelector("#staff-booking-status");
+  const bypassButton = form.querySelector("[data-bypass-staff-booking]");
+  form.dataset.bypassConstraints = "";
+  status.textContent = `${message} Staff can override this and book anyway if needed.`;
+  status.dataset.type = "error";
+  bypassButton?.classList.remove("is-hidden");
+}
 
 document.addEventListener("submit", async (event) => {
   const form = event.target.closest("#staff-booking-form");
@@ -2249,7 +2315,10 @@ document.addEventListener("submit", async (event) => {
   const data = Object.fromEntries(new FormData(form).entries());
   const status = form.querySelector("#staff-booking-status");
   const submitButton = form.querySelector("button[type='submit']");
+  const bypassButton = form.querySelector("[data-bypass-staff-booking]");
+  const isBypassSubmit = form.dataset.bypassConstraints === "true";
   data.phone = phoneDigits(data.phone);
+  data.bypassConstraints = isBypassSubmit;
 
   if (!staff.some((person) => person.id === data.staffId)) {
     status.textContent = "Choose a nail tech from the matching list.";
@@ -2265,7 +2334,8 @@ document.addEventListener("submit", async (event) => {
   }
 
   submitButton.disabled = true;
-  submitButton.textContent = "Creating...";
+  if (bypassButton) bypassButton.disabled = true;
+  submitButton.textContent = isBypassSubmit ? "Booking Anyway..." : "Creating...";
   status.textContent = "";
   status.dataset.type = "";
 
@@ -2281,6 +2351,10 @@ document.addEventListener("submit", async (event) => {
     const result = await response.json();
 
     if (!response.ok) {
+      if (result.canBypass) {
+        showStaffBookingBypass(form, result.error || "That appointment conflicts with the schedule.");
+        return;
+      }
       throw new Error(result.error || "Unable to create appointment.");
     }
 
@@ -2298,17 +2372,29 @@ document.addEventListener("submit", async (event) => {
     status.dataset.type = "error";
   } finally {
     submitButton.disabled = false;
+    if (bypassButton) bypassButton.disabled = false;
     submitButton.textContent = "Create Appointment";
   }
 });
 
 document.addEventListener("click", async (event) => {
+  const bypassButton = event.target.closest("[data-bypass-staff-booking]");
+  if (bypassButton) {
+    const form = bypassButton.closest("#staff-booking-form");
+    if (form) {
+      form.dataset.bypassConstraints = "true";
+      form.requestSubmit();
+    }
+    return;
+  }
+
   const selectedService = event.target.closest("[data-staff-booking-service]");
   if (selectedService) {
     const form = selectedService.closest("#staff-booking-form");
     const input = form?.querySelector("#staff-booking-service");
     const menu = form?.querySelector("#staff-booking-service-options");
     if (input && menu) {
+      resetStaffBookingBypass(form);
       input.value = selectedService.dataset.staffBookingService;
       input.setAttribute("aria-expanded", "false");
       menu.classList.remove("is-open");
@@ -2324,6 +2410,7 @@ document.addEventListener("click", async (event) => {
     const idInput = form?.querySelector("#staff-booking-worker-id");
     const menu = form?.querySelector("#staff-booking-worker-options");
     if (input && idInput && menu) {
+      resetStaffBookingBypass(form);
       input.value = selectedWorker.dataset.staffBookingWorkerName;
       idInput.value = selectedWorker.dataset.staffBookingWorker;
       input.setAttribute("aria-expanded", "false");
@@ -2600,3 +2687,11 @@ if (portalPin) {
 }
 
 setInterval(updateCurrentTimeMarker, 60_000);
+setInterval(async () => {
+  if (!portalPin || editingBookingId || document.hidden) return;
+  try {
+    await loadBookings();
+  } catch (error) {
+    console.warn("Calendar refresh failed", error);
+  }
+}, 60_000);

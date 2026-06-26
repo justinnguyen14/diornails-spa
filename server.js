@@ -509,6 +509,27 @@ function todaysAppointmentsForPhone(phone) {
     }));
 }
 
+function checkinForBooking(booking, checkins = readCheckins()) {
+  const digits = phoneDigits(booking.phone);
+  return checkins.find((checkin) => (
+    checkin.date === booking.date &&
+    (
+      (booking.customerId && checkin.customerId === booking.customerId) ||
+      phoneDigits(checkin.phone) === digits
+    )
+  ));
+}
+
+function bookingWithCheckinStatus(booking, checkins = readCheckins()) {
+  const checkin = checkinForBooking(booking, checkins);
+  return {
+    ...booking,
+    checkInStatus: checkin ? "checked-in" : "pending",
+    checkInAt: checkin?.createdAt || "",
+    checkInId: checkin?.id || ""
+  };
+}
+
 function checkinCountForCustomer(customerId, phone) {
   const digits = phoneDigits(phone);
   return readCheckins().filter((checkin) => (
@@ -891,10 +912,10 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && bStart < aEnd;
 }
 
-function isStaffAvailable(bookings, staffId, date, time, durationMinutes = 60) {
+function isStaffAvailable(bookings, staffId, date, time, durationMinutes = 60, options = {}) {
   const worker = bookableStaff.find((person) => person.id === staffId);
 
-  if (isPastDate(date) || isPastSlot(date, time) || !appointmentFitsSalonHours(date, time, durationMinutes)) {
+  if (isPastDate(date) || (!options.ignorePastSlot && isPastSlot(date, time)) || !appointmentFitsSalonHours(date, time, durationMinutes)) {
     return false;
   }
 
@@ -941,58 +962,77 @@ function isStaffWorkingFromSchedule(worker, dateString, schedule) {
   return isWeeklyStaffWorking(schedule, worker, dateString);
 }
 
-function assignStaff(bookings, requestedStaffId, date, time, durationMinutes) {
+function assignStaff(bookings, requestedStaffId, date, time, durationMinutes, options = {}) {
   if (requestedStaffId && requestedStaffId !== "any") {
-    return isStaffAvailable(bookings, requestedStaffId, date, time, durationMinutes) ? requestedStaffId : null;
+    return isStaffAvailable(bookings, requestedStaffId, date, time, durationMinutes, options) ? requestedStaffId : null;
   }
 
-  const worker = bookableStaff.find((person) => isStaffAvailable(bookings, person.id, date, time, durationMinutes));
+  const worker = bookableStaff.find((person) => isStaffAvailable(bookings, person.id, date, time, durationMinutes, options));
   return worker?.id || null;
 }
 
-function validateBooking(input) {
+function validateBooking(input, options = {}) {
+  const staffMode = Boolean(options.staffMode);
+  const bypassConstraints = staffMode && Boolean(options.bypassConstraints);
   const required = ["firstName", "lastName", "phone", "service", "date", "time"];
   const missing = required.filter((key) => !String(input[key] || "").trim());
 
   if (missing.length > 0) {
-    return `${missing.join(", ")} required.`;
+    return { error: `${missing.join(", ")} required.` };
   }
 
   if (String(input.email || "").trim() && !isValidEmail(input.email)) {
-    return "Please enter a valid email address.";
+    return { error: "Please enter a valid email address." };
   }
 
   if (phoneDigits(input.phone).length !== 10) {
-    return "Please enter a full 10 digit phone number.";
+    return { error: "Please enter a full 10 digit phone number." };
   }
 
   const service = canonicalServiceName(input.service);
 
   if (!service || !serviceDurations[service]) {
-    return "Please choose a valid service.";
-  }
-
-  if (isPastDate(input.date)) {
-    return "Please choose today or a future date.";
-  }
-
-  if (!appointmentFitsSalonHours(input.date, input.time, serviceDurations[service])) {
-    return `That service must finish by the salon closing time of ${displayTime(getHours(input.date).close)}.`;
-  }
-
-  if (!slotsForDate(input.date, serviceDurations[service]).includes(input.time)) {
-    return "Please choose a 15-minute appointment start time within salon hours.";
-  }
-
-  if (isPastSlot(input.date, input.time)) {
-    return "That appointment time has already passed. Please choose a later time.";
+    return { error: "Please choose a valid service." };
   }
 
   if (input.staffId && input.staffId !== "any" && !bookableStaff.some((person) => person.id === input.staffId)) {
-    return "Please choose a valid nail tech.";
+    return { error: "Please choose a valid nail tech." };
   }
 
-  return "";
+  if (isPastDate(input.date)) {
+    return { error: "Please choose today or a future date." };
+  }
+
+  if (!appointmentFitsSalonHours(input.date, input.time, serviceDurations[service]) && !bypassConstraints) {
+    return {
+      error: `That service must finish by the salon closing time of ${displayTime(getHours(input.date).close)}.`,
+      bypassable: staffMode && !bypassConstraints
+    };
+  }
+
+  const { open, close } = getHours(input.date);
+  const startMinutes = timeToMinutes(input.time);
+  const openMinutes = timeToMinutes(open);
+  const closeMinutes = timeToMinutes(close);
+  const validStartTime = bypassConstraints
+    ? startMinutes >= openMinutes && startMinutes <= closeMinutes && (startMinutes - openMinutes) % 15 === 0
+    : slotsForDate(input.date, serviceDurations[service]).includes(input.time);
+
+  if (!validStartTime) {
+    return { error: "Please choose a 15-minute appointment start time within salon hours." };
+  }
+
+  if (isPastSlot(input.date, input.time)) {
+    const minutesPast = currentMinutes() - timeToMinutes(input.time);
+    if (!staffMode || (minutesPast > 15 && !bypassConstraints)) {
+      return {
+        error: "That appointment time has already passed. Please choose a later time.",
+        bypassable: staffMode && !bypassConstraints
+      };
+    }
+  }
+
+  return { error: "" };
 }
 
 function isValidEmail(value) {
@@ -1209,19 +1249,33 @@ function matchesCustomerIdentity(booking, phone, firstName, lastName) {
 }
 
 async function createBooking(input, createdBy = "customer") {
-  const validationError = validateBooking(input);
+  const staffMode = createdBy === "staff";
+  const bypassConstraints = staffMode && booleanValue(input.bypassConstraints);
+  const validation = validateBooking(input, { staffMode, bypassConstraints });
 
-  if (validationError) {
-    return { statusCode: 400, error: validationError };
+  if (validation.error) {
+    return {
+      statusCode: validation.bypassable ? 409 : 400,
+      error: validation.error,
+      canBypass: Boolean(validation.bypassable)
+    };
   }
 
   const bookings = readBookings();
   const service = canonicalServiceName(input.service);
   const durationMinutes = durationForService(service);
-  const staffId = assignStaff(bookings, input.staffId || "any", input.date, input.time, durationMinutes);
+  const minutesPast = currentMinutes() - timeToMinutes(input.time);
+  const staffPastGrace = staffMode && input.date === localTodayIso() && isPastSlot(input.date, input.time) && minutesPast <= 15;
+  const staffId = bypassConstraints && input.staffId && input.staffId !== "any"
+    ? input.staffId
+    : assignStaff(bookings, input.staffId || "any", input.date, input.time, durationMinutes, { ignorePastSlot: staffPastGrace });
 
   if (!staffId) {
-    return { statusCode: 409, error: "That time is no longer available. Please choose another time." };
+    return {
+      statusCode: 409,
+      error: "That time is no longer available. Please choose another time.",
+      canBypass: staffMode
+    };
   }
 
   const staffName = bookableStaff.find((person) => person.id === staffId).name;
@@ -1245,6 +1299,7 @@ async function createBooking(input, createdBy = "customer") {
     notes: String(input.notes || "").trim(),
     status: "confirmed",
     createdBy,
+    bypassedConstraints: bypassConstraints,
     createdAt: new Date().toISOString(),
     notifications: []
   };
@@ -1980,7 +2035,7 @@ async function handleApi(req, res, pathname, searchParams) {
     try {
       const input = await readJson(req);
       const result = await createBooking(input, "staff");
-      sendJson(res, result.statusCode, result.error ? { error: result.error } : { booking: result.booking });
+      sendJson(res, result.statusCode, result.error ? { error: result.error, canBypass: result.canBypass } : { booking: result.booking });
     } catch (error) {
       sendJson(res, 400, { error: "Unable to create booking." });
     }
@@ -2061,12 +2116,13 @@ async function handleApi(req, res, pathname, searchParams) {
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     const staffId = searchParams.get("staffId");
+    const checkins = readCheckins();
     const filtered = bookings.filter((booking) => {
       if (from && booking.date < from) return false;
       if (to && booking.date > to) return false;
       if (staffId && staffId !== "all" && booking.staffId !== staffId) return false;
       return booking.status !== "cancelled";
-    });
+    }).map((booking) => bookingWithCheckinStatus(booking, checkins));
 
     sendJson(res, 200, { bookings: filtered });
     return;
