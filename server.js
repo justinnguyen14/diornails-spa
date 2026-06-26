@@ -11,16 +11,31 @@ const BOOKINGS_FILE = path.join(DATA_DIR, "bookings.json");
 const SCHEDULE_FILE = path.join(DATA_DIR, "schedule.json");
 const CUSTOMERS_FILE = path.join(DATA_DIR, "customers.json");
 const STAFF_FILE = path.join(DATA_DIR, "staff.json");
+const SERVICES_FILE = path.join(DATA_DIR, "services.json");
 const PUBLIC_DIR = __dirname;
 
 loadEnvFile();
 
+const staffColorPalette = [
+  { bg: "#ffe4e6", border: "#fb7185", ink: "#7f1d1d" },
+  { bg: "#ffedd5", border: "#fb923c", ink: "#7c2d12" },
+  { bg: "#fef9c3", border: "#eab308", ink: "#713f12" },
+  { bg: "#dcfce7", border: "#4ade80", ink: "#14532d" },
+  { bg: "#dbeafe", border: "#60a5fa", ink: "#1e3a8a" },
+  { bg: "#ede9fe", border: "#a78bfa", ink: "#4c1d95" },
+  { bg: "#fce7f3", border: "#f472b6", ink: "#831843" },
+  { bg: "#cffafe", border: "#22d3ee", ink: "#164e63" },
+  { bg: "#fef3c7", border: "#f59e0b", ink: "#78350f" },
+  { bg: "#ccfbf1", border: "#2dd4bf", ink: "#134e4a" },
+  { bg: "#e0e7ff", border: "#818cf8", ink: "#312e81" },
+  { bg: "#fae8ff", border: "#d946ef", ink: "#701a75" }
+];
 const defaultNailTechs = "Kevin,Rumi,Kvita,Ana,Khrystyna,Marta,Oksana,Sandra";
 const initialNailTechs = parseNailTechs(process.env.NAIL_TECHS || defaultNailTechs);
 let bookableStaff = readStaffRecords();
 let staff = [{ id: "any", name: "Any available tech" }, ...bookableStaff];
 
-const serviceGroups = [
+const defaultServiceGroups = [
   {
     name: "Manicure",
     services: [
@@ -92,9 +107,9 @@ const serviceGroups = [
   }
 ];
 
-const services = serviceGroups.flatMap((group) => group.services);
-const waxingServices = serviceGroups.find((group) => group.name === "Waxing")?.services || [];
-const serviceDurations = Object.fromEntries([
+const defaultServices = defaultServiceGroups.flatMap((group) => group.services);
+const waxingServices = defaultServiceGroups.find((group) => group.name === "Waxing")?.services || [];
+const defaultServiceDurations = Object.fromEntries([
   ["Manicure Gel", 45],
   ["Manicure Regular", 35],
   ["Pedicure Regular", 45],
@@ -128,6 +143,62 @@ const serviceDurations = Object.fromEntries([
   ["Airbrush Brush & Up", 5],
   ...waxingServices.map((service) => [service, 15])
 ]);
+const defaultServicePrices = {
+  "Manicure Gel": 40,
+  "Manicure Regular": 25,
+  "Manicure Gel and Pedicure Gel": 95,
+  "Pedicure and Manicure and Regular": 60,
+  "Manicure Gel and Pedicure Regular": 80,
+  "Pedicure Regular": 40,
+  "Pedicure with Gel Color": 60,
+  "Spa Pedicure with Gel Color": 75,
+  "Spa Pedicure Volcano": 60,
+  "Acrylic/Hard Gel Nail Removal + Manicure Gel Color": 45,
+  "Full Set Gel": 65,
+  "Crystal Gel Full Set Pink & White": 75,
+  "Full Set Pink & White Acrylic": 70,
+  "Full Set Acrylic Solar": 60,
+  "Full Set Acrylic French": 70,
+  "Fill in Pink & White Gel": 55,
+  "Fill In Gel French": 65,
+  "Fill in Gel Pink Only": 55,
+  "Fill In Gel & Gel Colors": 55,
+  "Fill in Acrylic": 50,
+  "Acrylic Fill Pink & White": 60,
+  "Polish Change Nail Color": 20,
+  "Polish Change Toe Nails Regular": 20,
+  "Polish Change Nail Gel Color": 25,
+  "Polish Change Toe Gel Color": 30,
+  "Nail Repair and Up": 5,
+  "Nails Removal": 20,
+  "Nails Cut and Up": 5,
+  "French": 10,
+  "Callus Removal": 5,
+  "Airbrush Brush & Up": 5,
+  "Eyebrow Wax": 12,
+  "Lip Wax": 8,
+  "Chin Wax": 7,
+  "Face Side Wax": 14,
+  "Full Face": 25,
+  "Half Arm": 25,
+  "Full Arm": 40,
+  "Under Arm": 25,
+  "Stomach Line": 10,
+  "Full Stomach": 20,
+  "Half Leg": 40,
+  "Full Leg": 60,
+  "Bikini": 25,
+  "Bikini & Thigh": 35,
+  "Chest & Up": 20,
+  "Back & Up": 30,
+  "Shoulder & Up": 15,
+  "Neck & Up": 8
+};
+let serviceRecords = readServiceRecords();
+let services = [];
+let serviceGroups = [];
+let serviceDurations = {};
+refreshServiceCatalog();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -175,6 +246,7 @@ function normalizeStaffRecord(record, fallback = {}) {
     name,
     phone: displayPhone(record.phone || fallback.phone || ""),
     email: String(record.email || fallback.email || "").trim().toLowerCase(),
+    color: record.color || fallback.color || null,
     active: record.active !== false,
     workDays: Array.isArray(record.workDays)
       ? record.workDays.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
@@ -196,7 +268,10 @@ function readAllStaffRecords() {
     );
   }
 
-  return JSON.parse(fs.readFileSync(STAFF_FILE, "utf8")).map((record) => normalizeStaffRecord(record));
+  return JSON.parse(fs.readFileSync(STAFF_FILE, "utf8")).map((record, index) => normalizeStaffRecord({
+    ...record,
+    color: record.color || staffColorPalette[index % staffColorPalette.length]
+  }));
 }
 
 function readStaffRecords() {
@@ -211,6 +286,57 @@ function writeStaffRecords(records) {
   fs.writeFileSync(STAFF_FILE, `${JSON.stringify(records.map((record) => normalizeStaffRecord(record)), null, 2)}\n`);
   bookableStaff = records.filter((record) => record.active !== false).map((record) => normalizeStaffRecord(record));
   staff = [{ id: "any", name: "Any available tech" }, ...bookableStaff];
+}
+
+function defaultServiceRecords() {
+  return defaultServiceGroups.flatMap((group) => group.services.map((name) => ({
+    id: slugify(name),
+    name,
+    category: group.name,
+    price: Number(defaultServicePrices[name] || 0),
+    durationMinutes: Number(defaultServiceDurations[name] || 60),
+    active: true
+  })));
+}
+
+function normalizeServiceRecord(record) {
+  const name = String(record.name || "").trim();
+  return {
+    id: String(record.id || slugify(name)).trim(),
+    name,
+    category: String(record.category || "Nail Services").trim(),
+    price: Math.max(0, Number(record.price || 0)),
+    durationMinutes: Math.max(15, Number(record.durationMinutes || 60)),
+    active: record.active !== false,
+    createdAt: record.createdAt || new Date().toISOString(),
+    updatedAt: record.updatedAt || new Date().toISOString()
+  };
+}
+
+function readServiceRecords() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(SERVICES_FILE)) {
+    fs.writeFileSync(SERVICES_FILE, `${JSON.stringify(defaultServiceRecords(), null, 2)}\n`);
+  }
+  return JSON.parse(fs.readFileSync(SERVICES_FILE, "utf8")).map(normalizeServiceRecord);
+}
+
+function writeServiceRecords(records) {
+  fs.writeFileSync(SERVICES_FILE, `${JSON.stringify(records.map(normalizeServiceRecord), null, 2)}\n`);
+  serviceRecords = records.map(normalizeServiceRecord);
+  refreshServiceCatalog();
+}
+
+function refreshServiceCatalog() {
+  const active = serviceRecords.filter((record) => record.active !== false);
+  services = active.map((record) => record.name);
+  serviceDurations = Object.fromEntries(active.map((record) => [record.name, record.durationMinutes]));
+  serviceGroups = [...new Set(active.map((record) => record.category))].map((category) => ({
+    name: category,
+    services: active.filter((record) => record.category === category).map((record) => record.name)
+  }));
 }
 
 function loadEnvFile() {
@@ -257,6 +383,10 @@ function ensureStore() {
 
   if (!fs.existsSync(STAFF_FILE)) {
     writeStaffRecords(initialNailTechs);
+  }
+
+  if (!fs.existsSync(SERVICES_FILE)) {
+    writeServiceRecords(defaultServiceRecords());
   }
 }
 
@@ -980,7 +1110,7 @@ async function handleApi(req, res, pathname, searchParams) {
       ...person,
       workDays: schedule.weekly?.[person.id] || person.workDays || []
     }));
-    sendJson(res, 200, { staff: scheduledStaff, services, serviceGroups, serviceDurations });
+    sendJson(res, 200, { staff: scheduledStaff, services, serviceGroups, serviceDurations, serviceRecords: serviceRecords.filter((record) => record.active !== false) });
     return;
   }
 
@@ -1269,7 +1399,12 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
-    sendJson(res, 200, { staff: readAllStaffRecords() });
+    const schedule = readSchedule();
+    const records = readAllStaffRecords().map((person) => ({
+      ...person,
+      workDays: schedule.weekly?.[person.id] || []
+    }));
+    sendJson(res, 200, { staff: records });
     return;
   }
 
@@ -1303,8 +1438,9 @@ async function handleApi(req, res, pathname, searchParams) {
       name,
       phone: input.phone,
       email: input.email,
+      color: staffColorPalette[records.length % staffColorPalette.length],
       active: input.active !== false,
-      workDays: [0, 1, 2, 3, 4, 5, 6]
+      workDays: []
     });
     records.push(employee);
     writeStaffRecords(records);
@@ -1368,13 +1504,124 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
-    records[index] = normalizeStaffRecord({
+    const removedEmployee = records[index];
+    records.splice(index, 1);
+    writeStaffRecords(records);
+    const schedule = readSchedule();
+    delete schedule.weekly[staffId];
+    Object.keys(schedule.overrides || {}).forEach((date) => {
+      delete schedule.overrides[date]?.[staffId];
+      if (schedule.overrides[date] && Object.keys(schedule.overrides[date]).length === 0) {
+        delete schedule.overrides[date];
+      }
+    });
+    writeSchedule(schedule);
+    sendJson(res, 200, { employee: removedEmployee, removed: true });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/services") {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+    sendJson(res, 200, { services: readServiceRecords() });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/services") {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+    const input = await readJson(req);
+    const name = String(input.name || "").trim();
+    const durationMinutes = Number(input.durationMinutes);
+    const price = Number(input.price);
+    if (!name || !String(input.category || "").trim()) {
+      sendJson(res, 400, { error: "Service name and category are required." });
+      return;
+    }
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes % 15 !== 0) {
+      sendJson(res, 400, { error: "Service time must be in 15 minute intervals." });
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      sendJson(res, 400, { error: "Enter a valid service price." });
+      return;
+    }
+    const records = readServiceRecords();
+    if (records.some((record) => normalizeServiceName(record.name) === normalizeServiceName(name))) {
+      sendJson(res, 409, { error: "A service with that name already exists." });
+      return;
+    }
+    let id = slugify(name) || `service-${Date.now()}`;
+    if (records.some((record) => record.id === id)) id = `${id}-${Date.now()}`;
+    const service = normalizeServiceRecord({
+      id,
+      name,
+      category: input.category,
+      price,
+      durationMinutes,
+      active: true
+    });
+    records.push(service);
+    writeServiceRecords(records);
+    sendJson(res, 201, { service });
+    return;
+  }
+
+  if (req.method === "PATCH" && pathname.startsWith("/api/services/")) {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+    const serviceId = decodeURIComponent(pathname.slice("/api/services/".length));
+    const input = await readJson(req);
+    const records = readServiceRecords();
+    const index = records.findIndex((record) => record.id === serviceId);
+    if (index < 0) {
+      sendJson(res, 404, { error: "Service not found." });
+      return;
+    }
+    const durationMinutes = Number(input.durationMinutes);
+    const price = Number(input.price);
+    if (!String(input.name || "").trim() || !String(input.category || "").trim()) {
+      sendJson(res, 400, { error: "Service name and category are required." });
+      return;
+    }
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes % 15 !== 0) {
+      sendJson(res, 400, { error: "Service time must be in 15 minute intervals." });
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      sendJson(res, 400, { error: "Enter a valid service price." });
+      return;
+    }
+    records[index] = normalizeServiceRecord({
       ...records[index],
-      active: false,
+      name: input.name,
+      category: input.category,
+      price,
+      durationMinutes,
+      active: input.active !== false,
       updatedAt: new Date().toISOString()
     });
-    writeStaffRecords(records);
-    sendJson(res, 200, { employee: records[index], removed: true });
+    writeServiceRecords(records);
+    sendJson(res, 200, { service: records[index] });
+    return;
+  }
+
+  if (req.method === "DELETE" && pathname.startsWith("/api/services/")) {
+    if (!requirePortal(req, res)) {
+      return;
+    }
+    const serviceId = decodeURIComponent(pathname.slice("/api/services/".length));
+    const records = readServiceRecords();
+    const next = records.filter((record) => record.id !== serviceId);
+    if (next.length === records.length) {
+      sendJson(res, 404, { error: "Service not found." });
+      return;
+    }
+    writeServiceRecords(next);
+    sendJson(res, 200, { removed: true });
     return;
   }
 

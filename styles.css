@@ -1336,20 +1336,28 @@ textarea:focus {
 
 .settings-menu-wrap {
   position: relative;
+  display: flex;
+  width: 9.625rem;
 }
 
 .settings-button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
-  min-height: 2.35rem;
+  width: 100%;
+  min-height: var(--control-height);
   border: 1px solid var(--line);
   border-radius: 0.3rem;
-  padding: 0 0.65rem;
+  padding: 0 1rem;
   background: var(--white);
   color: var(--red);
-  font: 800 0.78rem/1 Inter, system-ui, sans-serif;
+  font: 700 1.28rem/1 "Cormorant Garamond", Georgia, serif;
   cursor: pointer;
+}
+
+.staff-head-actions > .button {
+  width: 9.625rem;
 }
 
 .settings-dropdown {
@@ -1395,17 +1403,17 @@ textarea:focus {
 }
 
 .settings-dropdown strong {
-  font-size: 0.88rem;
+  font-size: 1rem;
 }
 
 .settings-dropdown span {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   line-height: 1.35;
 }
 
 .settings-button span:first-child {
-  font-size: 1.05rem;
+  font-size: 1.12rem;
   line-height: 1;
 }
 
@@ -1421,6 +1429,7 @@ textarea:focus {
 }
 
 .people-modal-card {
+  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   max-width: 96rem;
   height: calc(100vh - 1.5rem);
@@ -1465,13 +1474,18 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(18rem, 0.9fr) minmax(20rem, 1.1fr);
   gap: 1rem;
-  height: 100%;
+  height: auto;
   min-height: 0;
 }
 
 .people-modal-body {
+  display: grid;
   min-height: 0;
   overflow: hidden;
+}
+
+.people-modal-body .people-layout {
+  height: 100%;
 }
 
 .people-list-panel,
@@ -1515,6 +1529,7 @@ textarea:focus {
 
 .people-records {
   display: grid;
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 0.45rem;
   max-height: none;
@@ -1523,11 +1538,65 @@ textarea:focus {
   padding-right: 0.2rem;
 }
 
+.people-record-group {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.people-record-group + .people-record-group {
+  margin-top: 0.45rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.people-record-group h3 {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  color: var(--red);
+  background: #fff8f3;
+  border-left: 0.2rem solid var(--gold);
+  font: 900 0.74rem/1.2 Inter, system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.people-record-group-list {
+  display: grid;
+  grid-auto-rows: max-content;
+  gap: 0.45rem;
+}
+
+.settings-search {
+  position: relative;
+  min-width: 0;
+}
+
+.settings-search::after {
+  position: absolute;
+  top: 50%;
+  right: 0.8rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--gold);
+  border-bottom: 2px solid var(--gold);
+  content: "";
+  pointer-events: none;
+  transform: translateY(-70%) rotate(45deg);
+}
+
+.settings-search input {
+  padding-right: 2.2rem;
+  text-transform: none;
+}
+
 .people-record {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(5.75rem, auto) auto;
   gap: 0.65rem;
-  align-items: center;
+  align-items: start;
   width: 100%;
   min-height: 3.4rem;
   border: 1px solid var(--line);
@@ -1538,24 +1607,47 @@ textarea:focus {
   text-align: left;
 }
 
+.people-record[hidden],
+.people-record-group[hidden],
+.people-filter-empty[hidden] {
+  display: none !important;
+}
+
+.people-record-info,
 .people-record span,
 .people-record small {
   display: block;
   min-width: 0;
 }
 
+.people-record-info > strong {
+  display: block;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.people-record-details {
+  display: grid;
+  gap: 0.12rem;
+  margin-top: 0.28rem;
+}
+
 .people-record small {
-  margin-top: 0.2rem;
   color: var(--muted);
   font-size: 0.72rem;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .people-record em {
+  max-width: 8rem;
   color: var(--gold);
   font-size: 0.7rem;
   font-style: normal;
   font-weight: 900;
+  line-height: 1.25;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .people-record-actions {
@@ -1588,6 +1680,8 @@ textarea:focus {
   display: grid;
   align-content: start;
   gap: 0.75rem;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .people-form label {
@@ -1699,7 +1793,7 @@ textarea:focus {
 
 .staff-customer-result {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.65rem;
   align-items: center;
   width: 100%;
@@ -1740,16 +1834,49 @@ textarea:focus {
   background: var(--blush);
 }
 
-.staff-customer-result strong,
-.staff-customer-result span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.staff-customer-result-info {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
 }
 
-.staff-customer-result span {
+.staff-customer-result-info strong,
+.staff-customer-result-info small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.staff-customer-result-info small {
   color: var(--muted);
   font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.staff-booking-search-select .search-select-menu {
+  position: static;
+  width: 100%;
+  margin-top: 0.35rem;
+  box-shadow: 0 12px 28px rgba(93, 45, 38, 0.1);
+}
+
+.staff-booking-search-select .search-select-menu button {
+  justify-content: space-between;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.staff-booking-search-select .search-select-menu button small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.staff-booking-search-select input,
+.staff-customer-search input,
+[data-people-filter] {
+  text-transform: none;
 }
 
 .staff-booking-grid {
@@ -3196,12 +3323,78 @@ body.calendar-maximized .cancel-modal {
     grid-column: 1;
   }
 
+  .manage-booking-form {
+    grid-template-columns: 1fr;
+  }
+
+  .manage-booking-form .button {
+    width: 100%;
+  }
+
+  .people-list-heading {
+    display: grid;
+    align-items: stretch;
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .people-list-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(9.5rem, auto);
+    width: 100%;
+  }
+
+  .people-list-tools input {
+    width: 100%;
+    max-width: none;
+  }
+
+  .people-list-tools .button {
+    white-space: nowrap;
+  }
+
+  .people-record {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .people-record-actions {
+    grid-column: 1 / -1;
+  }
+
+  .people-record-actions button {
+    flex: 1;
+  }
+
   .booking-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .people-modal-body {
+    overflow-y: auto;
+  }
+
+  .people-modal-body .people-layout,
+  .people-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .people-list-panel {
+    min-height: 28rem;
+  }
+
+  .people-records {
+    max-height: 20rem;
+  }
+
+  .people-form {
+    overflow: visible;
   }
 }
 
@@ -3685,14 +3878,17 @@ body.calendar-maximized .cancel-modal {
     align-items: stretch;
   }
 
-  .staff-head-actions,
-  .staff-head-actions .button {
+  .staff-head-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
 
+  .staff-head-actions .button,
+  .settings-menu-wrap,
   .settings-button {
-    width: auto;
-    justify-self: end;
+    width: 100%;
+    min-width: 0;
   }
 
   .settings-dropdown {
@@ -3716,6 +3912,7 @@ body.calendar-maximized .cancel-modal {
   }
 
   .people-layout {
+    height: auto;
     overflow-y: auto;
   }
 
@@ -3733,12 +3930,13 @@ body.calendar-maximized .cancel-modal {
   }
 
   .people-list-heading input {
-    width: 62%;
+    width: 100%;
   }
 
   .people-list-tools {
     display: grid;
-    width: 64%;
+    grid-template-columns: minmax(0, 1fr) minmax(8.5rem, auto);
+    width: 100%;
   }
 
   .people-list-tools input,
@@ -3907,6 +4105,10 @@ body.calendar-maximized .cancel-modal {
     min-height: 2.55rem;
     padding-inline: 0.55rem;
     font-size: 0.72rem;
+  }
+
+  .people-list-tools {
+    grid-template-columns: 1fr;
   }
 }
 

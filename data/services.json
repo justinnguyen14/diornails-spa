@@ -1,0 +1,492 @@
+[
+  {
+    "id": "manicure-gel",
+    "name": "Manicure Gel",
+    "category": "Manicure",
+    "price": 40,
+    "durationMinutes": 45,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "manicure-regular",
+    "name": "Manicure Regular",
+    "category": "Manicure",
+    "price": 25,
+    "durationMinutes": 35,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "manicure-gel-and-pedicure-gel",
+    "name": "Manicure Gel and Pedicure Gel",
+    "category": "Manicure",
+    "price": 95,
+    "durationMinutes": 75,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "pedicure-and-manicure-and-regular",
+    "name": "Pedicure and Manicure and Regular",
+    "category": "Manicure",
+    "price": 60,
+    "durationMinutes": 75,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "manicure-gel-and-pedicure-regular",
+    "name": "Manicure Gel and Pedicure Regular",
+    "category": "Manicure",
+    "price": 80,
+    "durationMinutes": 70,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "pedicure-regular",
+    "name": "Pedicure Regular",
+    "category": "Pedicure",
+    "price": 40,
+    "durationMinutes": 45,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "pedicure-with-gel-color",
+    "name": "Pedicure with Gel Color",
+    "category": "Pedicure",
+    "price": 60,
+    "durationMinutes": 55,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "spa-pedicure-with-gel-color",
+    "name": "Spa Pedicure with Gel Color",
+    "category": "Pedicure",
+    "price": 75,
+    "durationMinutes": 75,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "spa-pedicure-volcano",
+    "name": "Spa Pedicure Volcano",
+    "category": "Pedicure",
+    "price": 60,
+    "durationMinutes": 75,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "acrylic-hard-gel-nail-removal-manicure-gel-color",
+    "name": "Acrylic/Hard Gel Nail Removal + Manicure Gel Color",
+    "category": "Nail Services",
+    "price": 45,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "full-set-gel",
+    "name": "Full Set Gel",
+    "category": "Nail Services",
+    "price": 65,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "crystal-gel-full-set-pink-white",
+    "name": "Crystal Gel Full Set Pink & White",
+    "category": "Nail Services",
+    "price": 75,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "full-set-pink-white-acrylic",
+    "name": "Full Set Pink & White Acrylic",
+    "category": "Nail Services",
+    "price": 70,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "full-set-acrylic-solar",
+    "name": "Full Set Acrylic Solar",
+    "category": "Nail Services",
+    "price": 60,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "full-set-acrylic-french",
+    "name": "Full Set Acrylic French",
+    "category": "Nail Services",
+    "price": 70,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "fill-in-pink-white-gel",
+    "name": "Fill in Pink & White Gel",
+    "category": "Nail Services",
+    "price": 55,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "fill-in-gel-french",
+    "name": "Fill In Gel French",
+    "category": "Nail Services",
+    "price": 65,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "fill-in-gel-pink-only",
+    "name": "Fill in Gel Pink Only",
+    "category": "Nail Services",
+    "price": 55,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "fill-in-gel-gel-colors",
+    "name": "Fill In Gel & Gel Colors",
+    "category": "Nail Services",
+    "price": 55,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "fill-in-acrylic",
+    "name": "Fill in Acrylic",
+    "category": "Nail Services",
+    "price": 50,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "acrylic-fill-pink-white",
+    "name": "Acrylic Fill Pink & White",
+    "category": "Nail Services",
+    "price": 60,
+    "durationMinutes": 60,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "polish-change-nail-color",
+    "name": "Polish Change Nail Color",
+    "category": "Nail Services",
+    "price": 20,
+    "durationMinutes": 30,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "polish-change-toe-nails-regular",
+    "name": "Polish Change Toe Nails Regular",
+    "category": "Nail Services",
+    "price": 20,
+    "durationMinutes": 30,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "polish-change-nail-gel-color",
+    "name": "Polish Change Nail Gel Color",
+    "category": "Nail Services",
+    "price": 25,
+    "durationMinutes": 30,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "polish-change-toe-gel-color",
+    "name": "Polish Change Toe Gel Color",
+    "category": "Nail Services",
+    "price": 30,
+    "durationMinutes": 30,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "nail-repair-and-up",
+    "name": "Nail Repair and Up",
+    "category": "Nail Services",
+    "price": 5,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "nails-removal",
+    "name": "Nails Removal",
+    "category": "Nail Services",
+    "price": 20,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "nails-cut-and-up",
+    "name": "Nails Cut and Up",
+    "category": "Nail Services",
+    "price": 5,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "french",
+    "name": "French",
+    "category": "Nail Services",
+    "price": 10,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "callus-removal",
+    "name": "Callus Removal",
+    "category": "Nail Services",
+    "price": 5,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "airbrush-brush-up",
+    "name": "Airbrush Brush & Up",
+    "category": "Nail Services",
+    "price": 5,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "eyebrow-wax",
+    "name": "Eyebrow Wax",
+    "category": "Waxing",
+    "price": 12,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "lip-wax",
+    "name": "Lip Wax",
+    "category": "Waxing",
+    "price": 8,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "chin-wax",
+    "name": "Chin Wax",
+    "category": "Waxing",
+    "price": 7,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "face-side-wax",
+    "name": "Face Side Wax",
+    "category": "Waxing",
+    "price": 14,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "full-face",
+    "name": "Full Face",
+    "category": "Waxing",
+    "price": 25,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "half-arm",
+    "name": "Half Arm",
+    "category": "Waxing",
+    "price": 25,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "full-arm",
+    "name": "Full Arm",
+    "category": "Waxing",
+    "price": 40,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "under-arm",
+    "name": "Under Arm",
+    "category": "Waxing",
+    "price": 25,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "stomach-line",
+    "name": "Stomach Line",
+    "category": "Waxing",
+    "price": 10,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "full-stomach",
+    "name": "Full Stomach",
+    "category": "Waxing",
+    "price": 20,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "half-leg",
+    "name": "Half Leg",
+    "category": "Waxing",
+    "price": 40,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.035Z",
+    "updatedAt": "2026-06-25T23:12:51.035Z"
+  },
+  {
+    "id": "full-leg",
+    "name": "Full Leg",
+    "category": "Waxing",
+    "price": 60,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.036Z",
+    "updatedAt": "2026-06-25T23:12:51.036Z"
+  },
+  {
+    "id": "bikini",
+    "name": "Bikini",
+    "category": "Waxing",
+    "price": 25,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.036Z",
+    "updatedAt": "2026-06-25T23:12:51.036Z"
+  },
+  {
+    "id": "bikini-thigh",
+    "name": "Bikini & Thigh",
+    "category": "Waxing",
+    "price": 35,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.036Z",
+    "updatedAt": "2026-06-25T23:12:51.036Z"
+  },
+  {
+    "id": "chest-up",
+    "name": "Chest & Up",
+    "category": "Waxing",
+    "price": 20,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.036Z",
+    "updatedAt": "2026-06-25T23:12:51.036Z"
+  },
+  {
+    "id": "back-up",
+    "name": "Back & Up",
+    "category": "Waxing",
+    "price": 30,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.036Z",
+    "updatedAt": "2026-06-25T23:12:51.036Z"
+  },
+  {
+    "id": "shoulder-up",
+    "name": "Shoulder & Up",
+    "category": "Waxing",
+    "price": 15,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.036Z",
+    "updatedAt": "2026-06-25T23:12:51.036Z"
+  },
+  {
+    "id": "neck-up",
+    "name": "Neck & Up",
+    "category": "Waxing",
+    "price": 8,
+    "durationMinutes": 15,
+    "active": true,
+    "createdAt": "2026-06-25T23:12:51.036Z",
+    "updatedAt": "2026-06-25T23:12:51.036Z"
+  }
+]

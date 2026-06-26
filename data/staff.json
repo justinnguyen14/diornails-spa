@@ -2,7 +2,7 @@
   {
     "id": "kevin",
     "name": "Kevin",
-    "phone": "",
+    "phone": "(973) 864-0489",
     "email": "",
     "active": true,
     "workDays": [
@@ -15,7 +15,7 @@
       6
     ],
     "createdAt": "2026-06-25T16:26:40.114Z",
-    "updatedAt": "2026-06-25T16:26:40.117Z"
+    "updatedAt": "2026-06-25T21:01:20.068Z"
   },
   {
     "id": "rumi",

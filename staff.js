@@ -30,7 +30,7 @@ let bookingPreviewTimer = null;
 let bookingDetailsPinned = false;
 let pendingManagerView = "";
 let peopleTab = "employees";
-let peopleRecords = { employees: [], customers: [] };
+let peopleRecords = { employees: [], customers: [], services: [] };
 
 const workerColorMap = {
   kevin: { bg: "#ffe4e6", border: "#fb7185", ink: "#7f1d1d" },
@@ -198,6 +198,9 @@ function workerColor(staffId) {
   }
 
   const index = Math.max(0, staff.findIndex((person) => person.id === staffId));
+  if (staff[index]?.color) {
+    return staff[index].color;
+  }
   return fallbackWorkerPalette[index % fallbackWorkerPalette.length];
 }
 
@@ -315,6 +318,70 @@ function serviceSelectOptions() {
   `).join("");
 }
 
+function staffBookingServiceOptions(filter = "") {
+  const normalized = String(filter || "").trim().toLowerCase();
+  return serviceGroups
+    .map((group) => ({
+      ...group,
+      services: [...group.services]
+        .filter((service) => service.toLowerCase().includes(normalized))
+        .sort((a, b) => a.localeCompare(b))
+    }))
+    .filter((group) => group.services.length)
+    .map((group) => `
+      <div class="search-select-group" role="presentation">
+        <p>${escapeHtml(group.name)}</p>
+        ${group.services.map((service) => `
+          <button type="button" role="option" data-staff-booking-service="${escapeHtml(service)}">
+            <span>${escapeHtml(service)}</span>
+            <small>${serviceDurations[service] || 60} min</small>
+          </button>
+        `).join("")}
+      </div>
+    `).join("") || '<p class="search-select-empty">No matching services</p>';
+}
+
+function staffBookingWorkerOptions(filter = "") {
+  const normalized = String(filter || "").trim().toLowerCase();
+  const normalizedDigits = phoneDigits(normalized);
+  const matches = [...staff]
+    .filter((person) => {
+      const text = [person.name, person.phone, person.email]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return (
+        text.includes(normalized) ||
+        Boolean(normalizedDigits && phoneDigits(person.phone || "").includes(normalizedDigits))
+      );
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return matches.length
+    ? matches.map((person) => `
+        <button
+          type="button"
+          role="option"
+          data-staff-booking-worker="${escapeHtml(person.id)}"
+          data-staff-booking-worker-name="${escapeHtml(person.name)}"
+        >
+          <span>${escapeHtml(person.name)}</span>
+          ${person.phone || person.email
+            ? `<small>${escapeHtml(person.phone || person.email)}</small>`
+            : ""}
+        </button>
+      `).join("")
+    : '<p class="search-select-empty">No matching nail techs</p>';
+}
+
+function renderStaffBookingSearchMenus(form) {
+  if (!form) return;
+  const serviceMenu = form.querySelector("#staff-booking-service-options");
+  const workerMenu = form.querySelector("#staff-booking-worker-options");
+  if (serviceMenu) serviceMenu.innerHTML = staffBookingServiceOptions();
+  if (workerMenu) workerMenu.innerHTML = staffBookingWorkerOptions();
+}
+
 function updateStaffBookingClosingLimit(form) {
   if (!form) {
     return;
@@ -397,19 +464,36 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
             </label>
             <label class="staff-booking-wide">
               <span>Service</span>
-              <select name="service" required>
-                <option value="">Choose service</option>
-                ${serviceSelectOptions()}
-              </select>
+              <div class="search-select staff-booking-search-select">
+                <input
+                  name="service"
+                  id="staff-booking-service"
+                  autocomplete="off"
+                  placeholder="Choose or search service"
+                  role="combobox"
+                  aria-controls="staff-booking-service-options"
+                  aria-expanded="false"
+                  required
+                />
+                <div class="search-select-menu" id="staff-booking-service-options" role="listbox"></div>
+              </div>
             </label>
             <label>
               <span>Nail tech</span>
-              <select name="staffId" required>
-                <option value="">Choose nail tech</option>
-                ${staff.map((person) => `
-                  <option value="${escapeHtml(person.id)}" ${person.id === staffId ? "selected" : ""}>${escapeHtml(person.name)}</option>
-                `).join("")}
-              </select>
+              <div class="search-select staff-booking-search-select">
+                <input
+                  id="staff-booking-worker"
+                  autocomplete="off"
+                  placeholder="Choose or search nail tech"
+                  role="combobox"
+                  aria-controls="staff-booking-worker-options"
+                  aria-expanded="false"
+                  value="${escapeHtml(staff.find((person) => person.id === staffId)?.name || "")}"
+                  required
+                />
+                <input name="staffId" id="staff-booking-worker-id" type="hidden" value="${escapeHtml(staffId)}" />
+                <div class="search-select-menu" id="staff-booking-worker-options" role="listbox"></div>
+              </div>
             </label>
             <label>
               <span>Date</span>
@@ -436,8 +520,10 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
     </div>
   `);
 
+  const form = document.querySelector("#staff-booking-form");
+  renderStaffBookingSearchMenus(form);
   document.querySelector("#staff-customer-search")?.focus();
-  updateStaffBookingClosingLimit(document.querySelector("#staff-booking-form"));
+  updateStaffBookingClosingLimit(form);
 }
 
 function closeStaffBookingModal() {
@@ -446,6 +532,45 @@ function closeStaffBookingModal() {
 }
 
 function peopleRecordForm() {
+  if (peopleTab === "services") {
+    const categories = [...new Set([
+      "Manicure",
+      "Pedicure",
+      "Nail Services",
+      "Waxing",
+      ...peopleRecords.services.map((service) => service.category)
+    ])];
+    return `
+      <form class="people-form" id="service-record-form">
+        <input name="id" type="hidden" />
+        <h3 data-people-form-title>Add new service</h3>
+        <label><span>Service name</span><input name="name" required /></label>
+        <label>
+          <span>Category</span>
+          <select name="category" required>
+            ${categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("")}
+          </select>
+        </label>
+        <div class="people-name-grid">
+          <label><span>Price</span><input name="price" type="number" min="0" step="0.01" required /></label>
+          <label>
+            <span>Time</span>
+            <select name="durationMinutes" required>
+              ${Array.from({ length: 16 }, (_, index) => (index + 1) * 15)
+                .map((minutes) => `<option value="${minutes}">${minutes} minutes</option>`).join("")}
+            </select>
+          </label>
+        </div>
+        <label class="people-check"><input name="active" type="checkbox" checked /><span>Available for booking</span></label>
+        <div class="people-form-actions">
+          <button class="button" type="button" data-save-people>Add Service</button>
+          <button class="button button-secondary" type="button" data-clear-people-form>Clear Form</button>
+        </div>
+        <p class="form-status" data-people-status role="status"></p>
+      </form>
+    `;
+  }
+
   if (peopleTab === "employees") {
     return `
       <form class="people-form" id="employee-record-form">
@@ -456,7 +581,7 @@ function peopleRecordForm() {
         <label><span>Email</span><input name="email" type="email" placeholder="Optional email" /></label>
         <label class="people-check"><input name="active" type="checkbox" checked /><span>Active worker</span></label>
         <div class="people-form-actions">
-          <button class="button" type="submit">Add Employee</button>
+          <button class="button" type="button" data-save-people>Add Employee</button>
           <button class="button button-secondary" type="button" data-clear-people-form>Clear Form</button>
         </div>
         <p class="form-status" data-people-status role="status"></p>
@@ -476,7 +601,7 @@ function peopleRecordForm() {
       <label><span>Email</span><input name="email" type="email" placeholder="Optional email" /></label>
       <label class="people-check"><input name="smsConsent" type="checkbox" /><span>Customer agreed to receive appointment texts</span></label>
       <div class="people-form-actions">
-        <button class="button" type="submit">Add Customer</button>
+        <button class="button" type="button" data-save-people>Add Customer</button>
         <button class="button button-secondary" type="button" data-clear-people-form>Clear Form</button>
       </div>
       <p class="form-status" data-people-status role="status"></p>
@@ -488,28 +613,66 @@ function renderPeopleWorkspace() {
   const modal = document.querySelector("#people-modal");
   if (!modal) return;
 
-  const records = peopleTab === "employees" ? peopleRecords.employees : peopleRecords.customers;
-  const list = records.length
-    ? records.map((record) => {
-        const name = peopleTab === "employees" ? record.name : `${record.firstName} ${record.lastName}`;
-        const details = [record.phone, record.email].filter(Boolean).join(" | ") || "No contact details";
+  const records = peopleTab === "employees"
+    ? peopleRecords.employees
+    : peopleTab === "services"
+      ? peopleRecords.services
+      : peopleRecords.customers;
+  const recordCard = (record) => {
+        const name = peopleTab === "employees"
+          ? record.name
+          : peopleTab === "services"
+            ? record.name
+            : `${record.firstName} ${record.lastName}`;
+        const detailLines = peopleTab === "services"
+          ? [
+              record.category,
+              `$${Number(record.price).toFixed(2)} · ${record.durationMinutes} minutes`
+            ]
+          : [
+              record.phone ? `Phone: ${record.phone}` : "",
+              record.email ? `Email: ${record.email}` : ""
+            ].filter(Boolean);
+        const scheduledDays = peopleTab === "employees"
+          ? weekDatesFor(calendarDate.value || todayIso()).filter((date) => isStaffWorking(record, date)).length
+          : 0;
         const badge = peopleTab === "employees"
-          ? (record.active === false ? "Inactive" : "Active")
-          : (record.smsConsent ? "Texts allowed" : "No text consent");
+          ? `${scheduledDays} days this week`
+          : peopleTab === "services"
+            ? (record.active === false ? "Not bookable" : "Bookable")
+            : (record.smsConsent ? "Texts allowed" : "No text consent");
         return `
-          <article class="people-record">
-            <span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(details)}</small></span>
-            <em>${badge}</em>
+          <article class="people-record" data-people-search="${escapeHtml(peopleSearchText(record))}">
+            <div class="people-record-info">
+              <strong>${escapeHtml(name)}</strong>
+              <div class="people-record-details">
+                ${(detailLines.length ? detailLines : ["No contact details"])
+                  .map((detail) => `<small>${escapeHtml(detail)}</small>`).join("")}
+              </div>
+            </div>
+            <em>${escapeHtml(badge)}</em>
             <span class="people-record-actions">
               <button type="button" data-edit-people-record="${escapeHtml(record.id)}">Edit</button>
-              ${peopleTab === "customers" || record.active !== false
-                ? `<button type="button" data-remove-people-record="${escapeHtml(record.id)}">Remove</button>`
-                : ""}
+              <button type="button" data-remove-people-record="${escapeHtml(record.id)}">Remove</button>
             </span>
           </article>
         `;
-      }).join("")
-    : `<p class="slot-empty">No saved ${peopleTab} yet.</p>`;
+      };
+  const list = peopleTab === "services"
+    ? records.length
+      ? serviceCategoryGroups(records)
+          .map((group) => `
+            <section class="people-record-group" data-people-group>
+              <h3>${escapeHtml(group.name)}</h3>
+              <div class="people-record-group-list">${group.records.map(recordCard).join("")}</div>
+            </section>
+          `).join("")
+      : '<p class="slot-empty">No saved services yet.</p>'
+    : records.length
+      ? [...records]
+          .sort((a, b) => peopleRecordName(a).localeCompare(peopleRecordName(b)))
+          .map(recordCard).join("")
+      : `<p class="slot-empty">No saved ${peopleTab} yet.</p>`;
 
   modal.querySelector(".people-modal-body").innerHTML = `
     <div class="people-layout">
@@ -517,35 +680,90 @@ function renderPeopleWorkspace() {
         <div class="people-list-heading">
           <div><span>Saved records</span><strong>${records.length}</strong></div>
           <div class="people-list-tools">
-            <input type="search" data-people-filter placeholder="Filter ${peopleTab}" aria-label="Filter ${peopleTab}" />
+            <div class="settings-search">
+              <input
+                type="search"
+                data-people-filter
+                autocomplete="off"
+                placeholder="Search ${peopleTab}"
+                aria-label="Search ${peopleTab}"
+              />
+            </div>
             <button class="button button-secondary button-compact" type="button" data-clear-people-form>
-              Add ${peopleTab === "employees" ? "Employee" : "Customer"}
+              Add ${peopleTab === "employees" ? "Employee" : peopleTab === "services" ? "Service" : "Customer"}
             </button>
           </div>
         </div>
-        <div class="people-records">${list}</div>
+        <div class="people-records">
+          ${list}
+          <p class="slot-empty people-filter-empty" data-people-filter-empty hidden>No matching ${peopleTab}.</p>
+        </div>
       </section>
       ${peopleRecordForm()}
     </div>
   `;
+
+  const form = modal.querySelector("#employee-record-form, #customer-record-form, #service-record-form");
+  if (!form) {
+    return;
+  }
+
+  form.dataset.saveBound = "true";
+}
+
+function peopleRecordName(record) {
+  if (peopleTab === "employees" || peopleTab === "services") return String(record.name || "");
+  return `${record.firstName || ""} ${record.lastName || ""}`.trim();
+}
+
+function peopleSearchText(record) {
+  const fields = peopleTab === "services"
+    ? [record.name, record.category, record.price, record.durationMinutes]
+    : peopleTab === "employees"
+      ? [record.name, record.phone, record.email]
+      : [record.firstName, record.lastName, `${record.firstName || ""} ${record.lastName || ""}`, record.phone, record.email];
+  return fields
+    .filter((value) => value !== undefined && value !== null)
+    .join(" ")
+    .toLowerCase();
+}
+
+function serviceCategoryGroups(records) {
+  const preferredOrder = serviceGroups.map((group) => group.name);
+  const categories = [...new Set(records.map((record) => record.category || "Other"))]
+    .sort((a, b) => {
+      const aIndex = preferredOrder.indexOf(a);
+      const bIndex = preferredOrder.indexOf(b);
+      if (aIndex >= 0 || bIndex >= 0) return (aIndex < 0 ? 999 : aIndex) - (bIndex < 0 ? 999 : bIndex);
+      return a.localeCompare(b);
+    });
+  return categories.map((category) => ({
+    name: category,
+    records: records
+      .filter((record) => (record.category || "Other") === category)
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
+  }));
 }
 
 async function loadPeopleRecords() {
   const headers = { "X-Portal-Pin": portalPin };
-  const [employeesResponse, customersResponse] = await Promise.all([
+  const [employeesResponse, customersResponse, servicesResponse] = await Promise.all([
     fetch("/api/staff-records", { headers }),
-    fetch("/api/customers", { headers })
+    fetch("/api/customers", { headers }),
+    fetch("/api/services", { headers })
   ]);
   const employeesData = await employeesResponse.json();
   const customersData = await customersResponse.json();
+  const servicesData = await servicesResponse.json();
 
-  if (!employeesResponse.ok || !customersResponse.ok) {
-    throw new Error(employeesData.error || customersData.error || "Unable to load people records.");
+  if (!employeesResponse.ok || !customersResponse.ok || !servicesResponse.ok) {
+    throw new Error(employeesData.error || customersData.error || servicesData.error || "Unable to load settings records.");
   }
 
   peopleRecords = {
     employees: employeesData.staff || [],
-    customers: customersData.customers || []
+    customers: customersData.customers || [],
+    services: servicesData.services || []
   };
 }
 
@@ -555,15 +773,18 @@ async function openPeopleModal(tab = "customers") {
   managePeopleButton.setAttribute("aria-expanded", "false");
   document.querySelector("#people-modal")?.remove();
   const isEmployee = peopleTab === "employees";
+  const isService = peopleTab === "services";
   document.body.insertAdjacentHTML("beforeend", `
     <div class="cancel-modal people-modal" id="people-modal" role="dialog" aria-modal="true" aria-labelledby="people-title">
       <div class="cancel-modal-card people-modal-card">
         <div class="people-modal-head">
           <div>
             <span>Settings</span>
-            <h2 id="people-title">${isEmployee ? "Staff Management" : "Customer Database"}</h2>
+            <h2 id="people-title">${isEmployee ? "Staff Management" : isService ? "Service Management" : "Customer Database"}</h2>
             <p>${isEmployee
               ? "Workers saved here appear in customer booking, the salon calendar, and Manager scheduling."
+              : isService
+                ? "Prices and appointment times saved here immediately control booking availability and reserved calendar time."
               : "This is the same saved-customer database used when staff search for a customer while creating an appointment."}</p>
           </div>
           <button class="button button-secondary button-compact" type="button" data-close-people>Close</button>
@@ -582,56 +803,99 @@ async function openPeopleModal(tab = "customers") {
 }
 
 function fillPeopleForm(recordId) {
-  const records = peopleTab === "employees" ? peopleRecords.employees : peopleRecords.customers;
+  const records = peopleTab === "employees"
+    ? peopleRecords.employees
+    : peopleTab === "services"
+      ? peopleRecords.services
+      : peopleRecords.customers;
   const record = records.find((item) => item.id === recordId);
-  const form = document.querySelector(peopleTab === "employees" ? "#employee-record-form" : "#customer-record-form");
+  const form = document.querySelector(
+    peopleTab === "employees"
+      ? "#employee-record-form"
+      : peopleTab === "services"
+        ? "#service-record-form"
+        : "#customer-record-form"
+  );
   if (!record || !form) return;
 
   Object.entries(record).forEach(([key, value]) => {
     const field = form.elements[key];
     if (!field) return;
     if (field.type === "checkbox") field.checked = Boolean(value);
-    else field.value = value || "";
+    else {
+      field.value = value || "";
+      if (peopleTab === "services" && key === "durationMinutes" && !field.value) {
+        field.insertAdjacentHTML("afterbegin", `<option value="${Number(value)}" disabled>${Number(value)} minutes (choose a 15 minute interval)</option>`);
+        field.value = String(value);
+      }
+    }
   });
   const title = form.querySelector("[data-people-form-title]");
-  const submitButton = form.querySelector('button[type="submit"]');
-  if (title) title.textContent = `Edit ${peopleTab === "employees" ? "employee" : "customer"}`;
-  if (submitButton) submitButton.textContent = `Save ${peopleTab === "employees" ? "Employee" : "Customer"}`;
+  const submitButton = form.querySelector("[data-save-people]");
+  const label = peopleTab === "employees" ? "employee" : peopleTab === "services" ? "service" : "customer";
+  if (title) title.textContent = `Edit ${label}`;
+  if (submitButton) submitButton.textContent = `Save ${label[0].toUpperCase()}${label.slice(1)}`;
   form.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function filterPeopleRecords(query) {
   const normalized = String(query || "").trim().toLowerCase();
+  const normalizedDigits = phoneDigits(normalized);
   document.querySelectorAll(".people-record").forEach((record) => {
-    record.hidden = Boolean(normalized) && !record.textContent.toLowerCase().includes(normalized);
+    const searchable = record.dataset.peopleSearch || "";
+    const matchesText = searchable.includes(normalized);
+    const matchesPhone = normalizedDigits && phoneDigits(searchable).includes(normalizedDigits);
+    record.hidden = Boolean(normalized) && !matchesText && !matchesPhone;
   });
+  document.querySelectorAll("[data-people-group]").forEach((group) => {
+    group.hidden = !group.querySelector(".people-record:not([hidden])");
+  });
+  const empty = document.querySelector("[data-people-filter-empty]");
+  if (empty) {
+    empty.hidden = !normalized || Boolean(document.querySelector(".people-record:not([hidden])"));
+  }
 }
 
 function clearPeopleForm() {
-  const form = document.querySelector(peopleTab === "employees" ? "#employee-record-form" : "#customer-record-form");
+  const form = document.querySelector(
+    peopleTab === "employees"
+      ? "#employee-record-form"
+      : peopleTab === "services"
+        ? "#service-record-form"
+        : "#customer-record-form"
+  );
   if (!form) return;
   form.reset();
-  form.elements.id.value = "";
-  if (peopleTab === "employees") form.elements.active.checked = true;
+  form.elements.namedItem("id").value = "";
+  if (peopleTab === "employees" || peopleTab === "services") {
+    form.elements.namedItem("active").checked = true;
+  }
+  if (peopleTab === "services") {
+    form.elements.namedItem("durationMinutes").value = "15";
+  }
   const title = form.querySelector("[data-people-form-title]");
-  const submitButton = form.querySelector('button[type="submit"]');
-  if (title) title.textContent = `Add new ${peopleTab === "employees" ? "employee" : "customer"}`;
-  if (submitButton) submitButton.textContent = `Add ${peopleTab === "employees" ? "Employee" : "Customer"}`;
+  const submitButton = form.querySelector("[data-save-people]");
+  const label = peopleTab === "employees" ? "employee" : peopleTab === "services" ? "service" : "customer";
+  if (title) title.textContent = `Add new ${label}`;
+  if (submitButton) submitButton.textContent = `Add ${label[0].toUpperCase()}${label.slice(1)}`;
   form.querySelector("input:not([type='hidden'])")?.focus();
 }
 
 async function removePeopleRecord(recordId) {
   const isEmployee = peopleTab === "employees";
-  const records = isEmployee ? peopleRecords.employees : peopleRecords.customers;
+  const isService = peopleTab === "services";
+  const records = isEmployee ? peopleRecords.employees : isService ? peopleRecords.services : peopleRecords.customers;
   const record = records.find((item) => item.id === recordId);
-  const name = isEmployee ? record?.name : `${record?.firstName || ""} ${record?.lastName || ""}`.trim();
+  const name = isEmployee || isService ? record?.name : `${record?.firstName || ""} ${record?.lastName || ""}`.trim();
   const prompt = isEmployee
-    ? `Remove ${name} from active workers? Existing appointment history will stay saved.`
-    : `Remove ${name} from the saved customer database? Existing appointments will stay saved.`;
+    ? `Remove ${name} completely from the employee database and schedules? Existing appointment history will stay saved.`
+    : isService
+      ? `Remove ${name} from available services? Existing appointments using this service will stay saved.`
+      : `Remove ${name} completely from the saved customer database? Existing appointments will stay saved.`;
 
   if (!record || !window.confirm(prompt)) return;
 
-  const endpoint = isEmployee ? "/api/staff-records" : "/api/customers";
+  const endpoint = isEmployee ? "/api/staff-records" : isService ? "/api/services" : "/api/customers";
   const response = await fetch(`${endpoint}/${encodeURIComponent(recordId)}`, {
     method: "DELETE",
     headers: { "X-Portal-Pin": portalPin }
@@ -646,6 +910,8 @@ async function removePeopleRecord(recordId) {
     await loadConfig();
     await loadSchedule();
     await loadBookings();
+  } else if (isService) {
+    await loadConfig();
   }
   await loadPeopleRecords();
   renderPeopleWorkspace();
@@ -1826,11 +2092,11 @@ function renderCustomerSearchResults(customers) {
           data-email="${escapeHtml(customer.email || "")}"
           data-sms-consent="${customer.smsConsent ? "true" : "false"}"
         >
-          <span>
-            <strong>${escapeHtml(customer.firstName)} ${escapeHtml(customer.lastName)}</strong><br />
-            ${escapeHtml(customer.email || "No email saved")}
+          <span class="staff-customer-result-info">
+            <strong>${escapeHtml(customer.firstName)} ${escapeHtml(customer.lastName)}</strong>
+            <small>${escapeHtml(customer.phone)}</small>
+            <small>${escapeHtml(customer.email || "No email saved")}</small>
           </span>
-          <strong>${escapeHtml(customer.phone)}</strong>
         </button>
       `).join("")
     : "<p>No saved customers match that search.</p>";
@@ -1869,10 +2135,59 @@ document.addEventListener("input", (event) => {
     return;
   }
 
+  const serviceSearch = event.target.closest("#staff-booking-service");
+  if (serviceSearch) {
+    const form = serviceSearch.closest("#staff-booking-form");
+    const menu = form?.querySelector("#staff-booking-service-options");
+    if (menu) {
+      menu.innerHTML = staffBookingServiceOptions(serviceSearch.value);
+      menu.classList.add("is-open");
+      serviceSearch.setAttribute("aria-expanded", "true");
+    }
+    updateStaffBookingClosingLimit(form);
+    return;
+  }
+
+  const workerSearch = event.target.closest("#staff-booking-worker");
+  if (workerSearch) {
+    const form = workerSearch.closest("#staff-booking-form");
+    const menu = form?.querySelector("#staff-booking-worker-options");
+    form.querySelector("#staff-booking-worker-id").value = "";
+    if (menu) {
+      menu.innerHTML = staffBookingWorkerOptions(workerSearch.value);
+      menu.classList.add("is-open");
+      workerSearch.setAttribute("aria-expanded", "true");
+    }
+    return;
+  }
+
   const phoneInput = event.target.closest("#staff-booking-form input[name='phone']");
 
   if (phoneInput) {
     phoneInput.value = formatPhone(phoneInput.value);
+  }
+});
+
+document.addEventListener("focusin", (event) => {
+  const serviceSearch = event.target.closest("#staff-booking-service");
+  if (serviceSearch) {
+    const menu = serviceSearch.closest("#staff-booking-form")?.querySelector("#staff-booking-service-options");
+    if (menu) {
+      menu.innerHTML = staffBookingServiceOptions();
+      menu.classList.add("is-open");
+      serviceSearch.setAttribute("aria-expanded", "true");
+    }
+    return;
+  }
+
+  const workerSearch = event.target.closest("#staff-booking-worker");
+  if (workerSearch) {
+    const menu = workerSearch.closest("#staff-booking-form")?.querySelector("#staff-booking-worker-options");
+    if (menu) {
+      menu.innerHTML = staffBookingWorkerOptions();
+      menu.classList.add("is-open");
+      workerSearch.setAttribute("aria-expanded", "true");
+    }
   }
 });
 
@@ -1896,6 +2211,13 @@ document.addEventListener("submit", async (event) => {
   const status = form.querySelector("#staff-booking-status");
   const submitButton = form.querySelector("button[type='submit']");
   data.phone = phoneDigits(data.phone);
+
+  if (!staff.some((person) => person.id === data.staffId)) {
+    status.textContent = "Choose a nail tech from the matching list.";
+    status.dataset.type = "error";
+    form.querySelector("#staff-booking-worker")?.focus();
+    return;
+  }
 
   if (data.phone.length !== 10) {
     status.textContent = "Enter a full 10 digit phone number.";
@@ -1942,6 +2264,35 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const selectedService = event.target.closest("[data-staff-booking-service]");
+  if (selectedService) {
+    const form = selectedService.closest("#staff-booking-form");
+    const input = form?.querySelector("#staff-booking-service");
+    const menu = form?.querySelector("#staff-booking-service-options");
+    if (input && menu) {
+      input.value = selectedService.dataset.staffBookingService;
+      input.setAttribute("aria-expanded", "false");
+      menu.classList.remove("is-open");
+      updateStaffBookingClosingLimit(form);
+    }
+    return;
+  }
+
+  const selectedWorker = event.target.closest("[data-staff-booking-worker]");
+  if (selectedWorker) {
+    const form = selectedWorker.closest("#staff-booking-form");
+    const input = form?.querySelector("#staff-booking-worker");
+    const idInput = form?.querySelector("#staff-booking-worker-id");
+    const menu = form?.querySelector("#staff-booking-worker-options");
+    if (input && idInput && menu) {
+      input.value = selectedWorker.dataset.staffBookingWorkerName;
+      idInput.value = selectedWorker.dataset.staffBookingWorker;
+      input.setAttribute("aria-expanded", "false");
+      menu.classList.remove("is-open");
+    }
+    return;
+  }
+
   const settingsChoice = event.target.closest("[data-open-people]");
   if (settingsChoice) {
     await openPeopleModal(settingsChoice.dataset.openPeople);
@@ -1951,6 +2302,20 @@ document.addEventListener("click", async (event) => {
   if (!event.target.closest(".settings-menu-wrap") && !settingsMenu.hidden) {
     settingsMenu.hidden = true;
     managePeopleButton.setAttribute("aria-expanded", "false");
+  }
+
+  if (!event.target.closest(".staff-booking-search-select")) {
+    document.querySelectorAll(".staff-booking-search-select .search-select-menu").forEach((menu) => menu.classList.remove("is-open"));
+    document.querySelectorAll(".staff-booking-search-select [role='combobox']").forEach((input) => input.setAttribute("aria-expanded", "false"));
+  }
+
+  const savePeopleButton = event.target.closest("[data-save-people]");
+  if (savePeopleButton) {
+    const form = savePeopleButton.closest("#employee-record-form, #customer-record-form, #service-record-form");
+    if (form) {
+      await savePeopleForm(form);
+    }
+    return;
   }
 
   if (event.target.closest("[data-manager-stay]")) {
@@ -2084,25 +2449,35 @@ document.addEventListener("input", (event) => {
   }
 });
 
-document.addEventListener("submit", async (event) => {
-  const form = event.target.closest("#employee-record-form, #customer-record-form");
-  if (!form) return;
-
-  event.preventDefault();
+async function savePeopleForm(form) {
   const status = form.querySelector("[data-people-status]");
-  const submitButton = form.querySelector('button[type="submit"]');
+  const submitButton = form.querySelector("[data-save-people]");
   const data = Object.fromEntries(new FormData(form));
-  const isEmployee = form.id === "employee-record-form";
+  const isEmployee = form.getAttribute("id") === "employee-record-form";
+  const isService = form.getAttribute("id") === "service-record-form";
   const id = data.id;
-  const endpoint = isEmployee ? "/api/staff-records" : "/api/customers";
+  const endpoint = isEmployee ? "/api/staff-records" : isService ? "/api/services" : "/api/customers";
   const payload = isEmployee
-    ? { name: data.name, phone: data.phone, email: data.email, active: form.elements.active.checked }
-    : {
+    ? {
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        active: data.active === "on"
+      }
+    : isService
+      ? {
+          name: data.name,
+          category: data.category,
+          price: Number(data.price),
+          durationMinutes: Number(data.durationMinutes),
+          active: data.active === "on"
+        }
+      : {
         firstName: data.firstName,
         lastName: data.lastName,
         phone: data.phone,
         email: data.email,
-        smsConsent: form.elements.smsConsent.checked
+        smsConsent: data.smsConsent === "on"
       };
 
   submitButton.disabled = true;
@@ -2140,21 +2515,30 @@ document.addEventListener("submit", async (event) => {
       } else {
         resetScheduleDraft();
       }
+    } else if (isService) {
+      await loadConfig();
     }
 
     await loadPeopleRecords();
     renderPeopleWorkspace();
     const nextForm = document.querySelector(isEmployee ? "#employee-record-form" : "#customer-record-form");
     const nextStatus = nextForm?.querySelector("[data-people-status]");
-    if (nextStatus) nextStatus.textContent = `${isEmployee ? "Employee" : "Customer"} saved.`;
+    if (nextStatus) {
+      nextStatus.textContent = `${isEmployee ? "Employee" : isService ? "Service" : "Customer"} saved successfully.`;
+      nextStatus.dataset.type = "success";
+    }
+    if (isEmployee) {
+      await loadBookings();
+    }
   } catch (error) {
     status.textContent = error.message;
     status.dataset.type = "error";
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = isEmployee ? "Save Employee" : "Save Customer";
+    const label = isEmployee ? "Employee" : isService ? "Service" : "Customer";
+    submitButton.textContent = id ? `Save ${label}` : `Add ${label}`;
   }
-});
+}
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {

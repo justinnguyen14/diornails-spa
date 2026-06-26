@@ -2,11 +2,59 @@ const header = document.querySelector(".site-header");
 const menuToggle = document.querySelector(".menu-toggle");
 const menuToggleLabel = menuToggle?.querySelector(".sr-only");
 const navLinks = document.querySelector(".nav-links");
+const publicServiceMenu = document.querySelector(".service-menu");
 const landingGaps = {
   top: 0,
   gallery: 40,
   contact: 0,
 };
+
+function escapeMarkup(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function renderPublicServices() {
+  if (!publicServiceMenu) return;
+
+  try {
+    const response = await fetch("/api/config");
+    const config = await response.json();
+    const records = (config.serviceRecords || []).filter((service) => service.active !== false);
+    if (!response.ok || !records.length) return;
+
+    const categories = [...new Set(records.map((service) => service.category))];
+    publicServiceMenu.innerHTML = categories.map((category) => {
+      const categoryServices = records.filter((service) => service.category === category);
+      const initial = category.trim().charAt(0).toUpperCase() || "S";
+      return `
+        <article class="service-category ${categoryServices.length > 8 ? "service-category-wide" : ""}">
+          <div class="service-category-heading">
+            <span aria-hidden="true">${escapeMarkup(initial)}</span>
+            <div>
+              <p>${escapeMarkup(category)}</p>
+              <h3>${escapeMarkup(category.toUpperCase())}</h3>
+            </div>
+          </div>
+          <ul class="price-list ${categoryServices.length > 8 ? "price-list-columns" : ""}">
+            ${categoryServices.map((service) => `
+              <li>
+                <span>${escapeMarkup(service.name)}</span>
+                <strong>$${Number(service.price || 0).toFixed(Number(service.price || 0) % 1 ? 2 : 0)}</strong>
+              </li>
+            `).join("")}
+          </ul>
+        </article>
+      `;
+    }).join("");
+  } catch {
+    // Keep the static menu as a reliable fallback if the booking server is offline.
+  }
+}
 
 function setMenuOpen(isOpen) {
   menuToggle?.setAttribute("aria-expanded", String(isOpen));
@@ -69,6 +117,7 @@ window.addEventListener("resize", () => {
 });
 
 window.addEventListener("load", () => {
+  renderPublicServices();
   const id = window.location.hash.slice(1);
 
   if (id) {
