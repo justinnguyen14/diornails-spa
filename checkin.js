@@ -36,6 +36,53 @@ function displayTime(value) {
   return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
+function birthdayFromFields(form, { required = false } = {}) {
+  const month = form.querySelector("[data-birthday-month]")?.value || "";
+  const day = form.querySelector("[data-birthday-day]")?.value || "";
+  const year = form.querySelector("[data-birthday-year]")?.value || "";
+  const hasAnyValue = Boolean(month || day || year);
+
+  if (!hasAnyValue && !required) return { value: "", valid: true };
+  if (!month || !day || !year) {
+    return { value: "", valid: false, message: required ? "Please add your birthday or choose skip for now." : "Enter a complete birthday or leave it blank." };
+  }
+
+  const numericDay = Number(day);
+  const numericYear = Number(year);
+  const numericMonth = Number(month);
+  const currentYear = new Date().getFullYear();
+  const date = new Date(numericYear, numericMonth - 1, numericDay);
+  const valid = Number.isInteger(numericDay)
+    && Number.isInteger(numericYear)
+    && numericYear >= 1900
+    && numericYear <= currentYear
+    && date.getFullYear() === numericYear
+    && date.getMonth() === numericMonth - 1
+    && date.getDate() === numericDay;
+
+  if (!valid) {
+    return { value: "", valid: false, message: "Please enter a real birthday with month, day, and 4 digit year." };
+  }
+
+  return {
+    value: `${numericYear}-${String(numericMonth).padStart(2, "0")}-${String(numericDay).padStart(2, "0")}`,
+    valid: true
+  };
+}
+
+function syncBirthdayField(form, options = {}) {
+  const birthdayInput = form.querySelector("input[name='birthday']");
+  if (!birthdayInput) return true;
+  const birthday = birthdayFromFields(form, options);
+  if (!birthday.valid) {
+    birthdayInput.value = "";
+    setStatus(birthday.message, "error");
+    return false;
+  }
+  birthdayInput.value = birthday.value;
+  return true;
+}
+
 function setStatus(message = "", type = "") {
   statusLine.textContent = message;
   statusLine.dataset.type = type;
@@ -83,6 +130,7 @@ function showResult(data) {
     ? `You&apos;re already checked in today, ${escapeMarkup(customer.firstName || "friend")}.`
     : data.message || `Welcome back, ${escapeMarkup(customer.firstName || "friend")}!`;
 
+  window.scrollTo({ top: 0, left: 0 });
   document.body.classList.add("is-checkin-complete");
   phoneForm.classList.add("is-hidden");
   profileForm.classList.add("is-hidden");
@@ -120,7 +168,7 @@ function showBirthdayPrompt(data) {
   birthdayForm.elements.customerId.value = data.customer?.id || "";
   birthdayForm.elements.phone.value = phoneDigits(data.phone || data.customer?.phone);
   setStatus(data.message || "Add your birthday to receive birthday-week gifts and discounts.");
-  birthdayForm.querySelector("input[name='birthday']")?.focus();
+  birthdayForm.querySelector("[data-birthday-month]")?.focus();
 }
 
 function resetCheckin() {
@@ -193,6 +241,9 @@ phoneForm?.addEventListener("submit", async (event) => {
 
 async function submitBirthday({ skipBirthday = false } = {}) {
   setStatus("");
+  if (!skipBirthday && !syncBirthdayField(birthdayForm, { required: true })) {
+    return;
+  }
   const data = Object.fromEntries(new FormData(birthdayForm).entries());
   data.skipBirthday = skipBirthday;
 
@@ -235,6 +286,9 @@ skipBirthdayButton?.addEventListener("click", async () => {
 profileForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   setStatus("");
+  if (!syncBirthdayField(profileForm)) {
+    return;
+  }
   const data = Object.fromEntries(new FormData(profileForm).entries());
   data.phone = phoneDigits(data.phone);
   data.profileConsent = Boolean(data.profileConsent);

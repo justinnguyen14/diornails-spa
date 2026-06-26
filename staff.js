@@ -107,6 +107,31 @@ function displayShortDate(value) {
   return `${month}/${day}/${year}`;
 }
 
+function normalizeBirthdayInput(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return { value: "", valid: true };
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const shortMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const year = isoMatch ? Number(isoMatch[1]) : shortMatch ? Number(shortMatch[3]) : NaN;
+  const month = isoMatch ? Number(isoMatch[2]) : shortMatch ? Number(shortMatch[1]) : NaN;
+  const day = isoMatch ? Number(isoMatch[3]) : shortMatch ? Number(shortMatch[2]) : NaN;
+  const currentYear = new Date().getFullYear();
+  const date = new Date(year, month - 1, day);
+  const valid = Number.isInteger(year)
+    && Number.isInteger(month)
+    && Number.isInteger(day)
+    && year >= 1900
+    && year <= currentYear
+    && date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day;
+
+  return valid
+    ? { value: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`, valid: true }
+    : { value: "", valid: false };
+}
+
 function managerDateHeader(value) {
   const date = new Date(`${value}T12:00:00`);
   const weekday = date.toLocaleDateString([], { weekday: "long" });
@@ -565,7 +590,7 @@ function peopleRecordForm() {
           <label>
             <span>Time</span>
             <select name="durationMinutes" required>
-              ${Array.from({ length: 16 }, (_, index) => (index + 1) * 15)
+              ${Array.from({ length: 8 }, (_, index) => (index + 1) * 15)
                 .map((minutes) => `<option value="${minutes}">${minutes} minutes</option>`).join("")}
             </select>
           </label>
@@ -608,7 +633,7 @@ function peopleRecordForm() {
       </div>
       <label><span>Phone</span><input name="phone" type="tel" inputmode="tel" placeholder="10 digit phone number" required /></label>
       <label><span>Email</span><input name="email" type="email" placeholder="Optional email" /></label>
-      <label><span>Date of birth</span><input name="birthday" type="date" /></label>
+      <label><span>Date of birth</span><input name="birthday" inputmode="numeric" placeholder="MM/DD/YYYY" /></label>
       <label class="people-check"><input name="smsConsent" type="checkbox" /><span>Customer agreed to receive appointment confirmations, reminders, account/check-in updates, birthday-week gifts, and salon offers by text. Message/data rates may apply; reply STOP to opt out.</span></label>
       <div class="people-form-actions">
         <button class="button" type="button" data-save-people>Add Customer</button>
@@ -837,7 +862,7 @@ function fillPeopleForm(recordId) {
     if (!field) return;
     if (field.type === "checkbox") field.checked = Boolean(value);
     else {
-      field.value = value || "";
+      field.value = peopleTab === "customers" && key === "birthday" && value ? displayShortDate(value) : value || "";
       if (peopleTab === "services" && key === "durationMinutes" && !field.value) {
         field.insertAdjacentHTML("afterbegin", `<option value="${Number(value)}" disabled>${Number(value)} minutes (choose a 15 minute interval)</option>`);
         field.value = String(value);
@@ -2469,6 +2494,11 @@ async function savePeopleForm(form) {
   const data = Object.fromEntries(new FormData(form));
   const isEmployee = form.getAttribute("id") === "employee-record-form";
   const isService = form.getAttribute("id") === "service-record-form";
+  const birthday = isEmployee || isService ? { value: "", valid: true } : normalizeBirthdayInput(data.birthday);
+  if (!birthday.valid) {
+    status.textContent = "Enter date of birth as MM/DD/YYYY.";
+    return;
+  }
   const id = data.id;
   const endpoint = isEmployee ? "/api/staff-records" : isService ? "/api/services" : "/api/customers";
   const payload = isEmployee
@@ -2491,7 +2521,7 @@ async function savePeopleForm(form) {
         lastName: data.lastName,
         phone: data.phone,
         email: data.email,
-        birthday: data.birthday,
+        birthday: birthday.value,
         smsConsent: data.smsConsent === "on"
       };
 

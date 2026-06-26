@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Customer Check In | Dior Nails & Spa</title>
     <meta name="description" content="Dior Nails & Spa customer check-in kiosk." />
-    <link rel="stylesheet" href="styles.css?v=56" />
+    <link rel="stylesheet" href="styles.css?v=58" />
   </head>
   <body class="app-page checkin-page">
     <header class="site-header checkin-header" aria-label="Check-in navigation">
@@ -72,10 +72,38 @@
               <span>Email (optional)</span>
               <input name="email" type="email" autocomplete="email" placeholder="name@example.com" />
             </label>
-            <label>
+            <div class="birthday-fieldset" data-birthday-fields>
               <span>Birthday (optional)</span>
-              <input name="birthday" type="date" />
-            </label>
+              <div class="birthday-grid">
+                <label>
+                  <span>Month</span>
+                  <select data-birthday-month>
+                    <option value="">Month</option>
+                    <option value="01">January</option>
+                    <option value="02">February</option>
+                    <option value="03">March</option>
+                    <option value="04">April</option>
+                    <option value="05">May</option>
+                    <option value="06">June</option>
+                    <option value="07">July</option>
+                    <option value="08">August</option>
+                    <option value="09">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Day</span>
+                  <input data-birthday-day type="number" inputmode="numeric" min="1" max="31" placeholder="DD" />
+                </label>
+                <label>
+                  <span>Year</span>
+                  <input data-birthday-year type="number" inputmode="numeric" min="1900" placeholder="YYYY" />
+                </label>
+              </div>
+              <input name="birthday" type="hidden" />
+            </div>
           </div>
           <input name="phone" type="hidden" />
           <label class="sms-consent">
@@ -103,10 +131,38 @@
           </div>
           <input name="customerId" type="hidden" />
           <input name="phone" type="hidden" />
-          <label>
+          <div class="birthday-fieldset birthday-fieldset-wide" data-birthday-fields data-birthday-required>
             <span>Date of birth</span>
-            <input name="birthday" type="date" required />
-          </label>
+            <div class="birthday-grid">
+              <label>
+                <span>Month</span>
+                <select data-birthday-month>
+                  <option value="">Month</option>
+                  <option value="01">January</option>
+                  <option value="02">February</option>
+                  <option value="03">March</option>
+                  <option value="04">April</option>
+                  <option value="05">May</option>
+                  <option value="06">June</option>
+                  <option value="07">July</option>
+                  <option value="08">August</option>
+                  <option value="09">September</option>
+                  <option value="10">October</option>
+                  <option value="11">November</option>
+                  <option value="12">December</option>
+                </select>
+              </label>
+              <label>
+                <span>Day</span>
+                <input data-birthday-day type="number" inputmode="numeric" min="1" max="31" placeholder="DD" />
+              </label>
+              <label>
+                <span>Year</span>
+                <input data-birthday-year type="number" inputmode="numeric" min="1900" placeholder="YYYY" />
+              </label>
+            </div>
+            <input name="birthday" type="hidden" />
+          </div>
           <div class="checkin-actions">
             <button class="button" type="submit">Save Birthday & Check In</button>
             <button class="button button-secondary" type="button" id="checkin-skip-birthday">Skip For Now</button>
@@ -123,6 +179,6 @@
       <p>Check-in and booking system developed by RCI Development.</p>
     </footer>
 
-    <script src="checkin.js?v=5"></script>
+    <script src="checkin.js?v=7"></script>
   </body>
 </html>

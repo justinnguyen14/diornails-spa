@@ -307,7 +307,7 @@ function normalizeServiceRecord(record) {
     name,
     category: String(record.category || "Nail Services").trim(),
     price: Math.max(0, Number(record.price || 0)),
-    durationMinutes: Math.max(15, Number(record.durationMinutes || 60)),
+    durationMinutes: Math.min(120, Math.max(15, Number(record.durationMinutes || 60))),
     active: record.active !== false,
     createdAt: record.createdAt || new Date().toISOString(),
     updatedAt: record.updatedAt || new Date().toISOString()
@@ -1059,19 +1059,19 @@ async function sendEmailNotification(booking, subject, summary, html) {
   }
 }
 
-async function sendSmsNotification(booking, summary) {
-  if (!booking.smsConsent) {
-    return { channel: "sms", ok: false, reason: "customer_sms_not_consented" };
+async function sendSmsToPhone(phone, body, channel = "sms") {
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM_NUMBER) {
+    return { channel, ok: false, reason: "missing_sms_provider" };
   }
 
-  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM_NUMBER) {
-    return { channel: "sms", ok: false, reason: "missing_sms_provider" };
+  if (phoneDigits(phone).length !== 10) {
+    return { channel, ok: false, reason: "invalid_sms_phone" };
   }
 
   const params = new URLSearchParams({
     From: process.env.TWILIO_FROM_NUMBER,
-    To: formatPhoneForSms(booking.phone),
-    Body: `${summary} Reply STOP to opt out.`
+    To: formatPhoneForSms(phone),
+    Body: body
   });
 
   if (process.env.TWILIO_STATUS_CALLBACK_URL) {
@@ -1090,7 +1090,7 @@ async function sendSmsNotification(booking, summary) {
     });
     const result = await response.json().catch(() => ({}));
     return {
-      channel: "sms",
+      channel,
       ok: response.ok,
       status: response.status,
       id: result.sid,
@@ -1098,8 +1098,36 @@ async function sendSmsNotification(booking, summary) {
       reason: result.message
     };
   } catch (error) {
-    return { channel: "sms", ok: false, reason: error.message || "sms_request_failed" };
+    return { channel, ok: false, reason: error.message || "sms_request_failed" };
   }
+}
+
+async function sendSmsNotification(booking, summary) {
+  if (!booking.smsConsent) {
+    return { channel: "sms", ok: false, reason: "customer_sms_not_consented" };
+  }
+
+  return sendSmsToPhone(booking.phone, `${summary} Reply STOP to opt out.`, "sms");
+}
+
+async function notifySelectedStaff(booking, requestedStaffId) {
+  if (!requestedStaffId || requestedStaffId === "any") {
+    return { channel: "staff_sms", ok: false, reason: "staff_not_specifically_requested" };
+  }
+
+  const selectedStaff = bookableStaff.find((person) => person.id === booking.staffId);
+  if (!selectedStaff) {
+    return { channel: "staff_sms", ok: false, reason: "staff_not_found" };
+  }
+
+  if (phoneDigits(selectedStaff.phone).length !== 10) {
+    return { channel: "staff_sms", ok: false, reason: "staff_phone_not_provided" };
+  }
+
+  const formattedDate = displayDate(booking.date);
+  const timeRange = appointmentTimeRange(booking);
+  const summary = `Dior Nails staff alert: ${booking.customerName} booked ${booking.service} with you on ${formattedDate} from ${timeRange}. Customer phone: ${booking.phone}.`;
+  return sendSmsToPhone(selectedStaff.phone, summary, "staff_sms");
 }
 
 async function notifyCustomer(booking) {
@@ -1224,6 +1252,16 @@ async function createBooking(input, createdBy = "customer") {
   booking.notifications = await notifyCustomer(booking).catch((error) => [
     { channel: "notification", ok: false, reason: error.message }
   ]);
+  booking.staffNotifications = [];
+
+  if (input.staffId && input.staffId !== "any") {
+    const staffNotification = await notifySelectedStaff(booking, input.staffId).catch((error) => ({
+      channel: "staff_sms",
+      ok: false,
+      reason: error.message
+    }));
+    booking.staffNotifications.push(staffNotification);
+  }
 
   const customer = upsertCustomer(booking);
   booking.customerId = customer?.id || "";
@@ -1849,8 +1887,8 @@ async function handleApi(req, res, pathname, searchParams) {
       sendJson(res, 400, { error: "Service name and category are required." });
       return;
     }
-    if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes % 15 !== 0) {
-      sendJson(res, 400, { error: "Service time must be in 15 minute intervals." });
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes > 120 || durationMinutes % 15 !== 0) {
+      sendJson(res, 400, { error: "Service time must be between 15 and 120 minutes in 15 minute intervals." });
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
@@ -1896,8 +1934,8 @@ async function handleApi(req, res, pathname, searchParams) {
       sendJson(res, 400, { error: "Service name and category are required." });
       return;
     }
-    if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes % 15 !== 0) {
-      sendJson(res, 400, { error: "Service time must be in 15 minute intervals." });
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes > 120 || durationMinutes % 15 !== 0) {
+      sendJson(res, 400, { error: "Service time must be between 15 and 120 minutes in 15 minute intervals." });
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
