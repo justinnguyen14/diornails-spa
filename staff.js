@@ -162,8 +162,9 @@ function normalizedSchedule(schedule) {
   Object.keys(schedule?.overrides || {}).sort().forEach((date) => {
     const values = {};
     Object.keys(schedule.overrides[date] || {}).sort().forEach((staffId) => {
-      if (typeof schedule.overrides[date][staffId] === "boolean") {
-        values[staffId] = schedule.overrides[date][staffId];
+      const value = normalizeOverrideValue(schedule.overrides[date][staffId]);
+      if (typeof value !== "undefined") {
+        values[staffId] = value;
       }
     });
     if (Object.keys(values).length) overrides[date] = values;
@@ -208,6 +209,47 @@ function openUnsavedScheduleModal(nextView) {
 
 function activeSchedule() {
   return scheduleDraft || scheduleData;
+}
+
+function normalizeUnavailableRange(value = {}) {
+  const start = String(value.start || "").trim();
+  const end = String(value.end || "").trim();
+
+  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) {
+    return null;
+  }
+
+  if (timeToMinutes(start) >= timeToMinutes(end)) {
+    return null;
+  }
+
+  return { start, end };
+}
+
+function normalizeOverrideValue(value) {
+  if (typeof value === "boolean") return value;
+  if (!value || typeof value !== "object") return undefined;
+
+  const normalized = {};
+  if (typeof value.working === "boolean") {
+    normalized.working = value.working;
+  }
+  const unavailable = normalizeUnavailableRange(value.unavailable || value);
+  if (unavailable) {
+    normalized.unavailable = unavailable;
+  }
+  return Object.keys(normalized).length ? normalized : undefined;
+}
+
+function overrideWorkingValue(value, fallback) {
+  if (typeof value === "boolean") return value;
+  if (value && typeof value === "object" && typeof value.working === "boolean") return value.working;
+  return fallback;
+}
+
+function overrideUnavailableValue(value) {
+  if (!value || typeof value !== "object") return null;
+  return normalizeUnavailableRange(value.unavailable || value);
 }
 
 function displayTime(value) {
@@ -1195,9 +1237,14 @@ function renderCreateSlots(column, range) {
   const hours = getHours(column.date);
   const start = Math.max(range.open, timeToMinutes(hours.open));
   const end = Math.min(range.close, timeToMinutes(hours.close));
+  const unavailable = column.unavailable;
   const slots = [];
 
   for (let minutes = start; minutes < end; minutes += 15) {
+    if (unavailable && minutes >= timeToMinutes(unavailable.start) && minutes < timeToMinutes(unavailable.end)) {
+      continue;
+    }
+
     const time = minutesToTime(minutes);
     slots.push(`
       <button
@@ -1215,6 +1262,23 @@ function renderCreateSlots(column, range) {
   }
 
   return slots.join("");
+}
+
+function renderUnavailableBlock(column, range) {
+  if (!column.unavailable) return "";
+  const start = Math.max(range.open, timeToMinutes(column.unavailable.start));
+  const end = Math.min(range.close, timeToMinutes(column.unavailable.end));
+  if (start >= end) return "";
+
+  return `
+    <div
+      class="schedule-unavailable-block"
+      style="--event-start: ${Math.max(0, start - range.open)}; --event-duration: ${end - start};"
+      aria-label="Unavailable from ${escapeHtml(displayTime(column.unavailable.start))} to ${escapeHtml(displayTime(column.unavailable.end))}"
+    >
+      Unavailable ${escapeHtml(displayTime(column.unavailable.start))} - ${escapeHtml(displayTime(column.unavailable.end))}
+    </div>
+  `;
 }
 
 function maximizeButton(label = "calendar") {
@@ -1287,6 +1351,7 @@ function renderSchedule(columns, days, compact = false) {
               <div class="schedule-line" style="--line-offset: ${Math.max(0, minutes - range.open)};"></div>
             `).join("")}
             ${column.isOff ? '<div class="schedule-off-message">Not working</div>' : renderCreateSlots(column, range)}
+            ${renderUnavailableBlock(column, range)}
             ${groupedBookingsByTime(column.bookings).map((group) => renderScheduleEvent(group[0], range.open, compact, group.length, group)).join("")}
           </section>
         `;
@@ -1320,6 +1385,7 @@ function renderDay() {
     date,
     staffId: person.id,
     isOff: !isStaffWorking(person, date),
+    unavailable: staffUnavailableRange(person, date),
     bookings: bookings
       .filter((booking) => booking.date === date && booking.staffId === person.id)
       .sort((a, b) => a.time.localeCompare(b.time))
@@ -1361,6 +1427,7 @@ function renderWeek() {
     date: day,
     staffId: selectedStaffId !== "all" ? selectedStaffId : "",
     isOff: Boolean(selectedStaff && !isStaffWorking(selectedStaff, day)),
+    unavailable: selectedStaff ? staffUnavailableRange(selectedStaff, day) : null,
     bookings: bookings
       .filter((booking) => booking.date === day)
       .sort((a, b) => a.time.localeCompare(b.time))
@@ -1562,7 +1629,10 @@ function renderMonth() {
               <div class="month-date-number">${dayNumber}</div>
               <div class="month-work-schedule">
                 ${workingStaff.length
-                  ? workingStaff.map((person) => `<span style="${workerColorStyle(person.id)}">${escapeHtml(person.name)}</span>`).join("")
+                  ? workingStaff.map((person) => {
+                    const unavailable = staffUnavailableRange(person, day);
+                    return `<span style="${workerColorStyle(person.id)}">${escapeHtml(person.name)}${unavailable ? ` <small>${escapeHtml(displayTime(unavailable.start))}-${escapeHtml(displayTime(unavailable.end))}</small>` : ""}</span>`;
+                  }).join("")
                   : "<p>Off</p>"}
               </div>
             </section>
@@ -1577,13 +1647,75 @@ function isStaffWorking(person, dateString) {
   const day = new Date(`${dateString}T12:00:00`).getDay();
   const schedule = activeSchedule();
   const override = schedule.overrides?.[dateString]?.[person.id];
+  const weeklyValue = (schedule.weekly?.[person.id] || person.workDays || []).includes(day);
 
   if (typeof override === "boolean") {
     return override;
   }
 
-  const weeklyDays = schedule.weekly?.[person.id] || person.workDays || [];
-  return weeklyDays.includes(day);
+  if (override && typeof override === "object" && typeof override.working === "boolean") {
+    return override.working;
+  }
+
+  return weeklyValue;
+}
+
+function staffUnavailableRange(person, dateString) {
+  const schedule = activeSchedule();
+  return overrideUnavailableValue(schedule.overrides?.[dateString]?.[person.id]);
+}
+
+function dateStaffOverrideValue(date, staffId) {
+  const person = staff.find((worker) => worker.id === staffId);
+  if (!person) return undefined;
+  const day = new Date(`${date}T12:00:00`).getDay();
+  const weeklyValue = (scheduleDraft.weekly?.[staffId] || person.workDays || []).includes(day);
+  const override = normalizeOverrideValue(scheduleDraft.overrides?.[date]?.[staffId]);
+  const working = overrideWorkingValue(override, weeklyValue);
+  const unavailable = overrideUnavailableValue(override);
+
+  if (working === weeklyValue && !unavailable) {
+    return undefined;
+  }
+
+  if (!unavailable && working !== weeklyValue) {
+    return working;
+  }
+
+  return {
+    ...(working !== weeklyValue ? { working } : {}),
+    ...(unavailable ? { unavailable } : {})
+  };
+}
+
+function syncDraftOverrideTracking(date, staffId) {
+  const value = dateStaffOverrideValue(date, staffId);
+  const person = staff.find((worker) => worker.id === staffId);
+  const day = new Date(`${date}T12:00:00`).getDay();
+  const weeklyValue = (scheduleDraft.weekly?.[staffId] || person?.workDays || []).includes(day);
+  const savedValue = normalizeOverrideValue(scheduleData.overrides?.[date]?.[staffId]);
+  if (typeof value === "undefined") {
+    if (typeof savedValue !== "undefined") {
+      scheduleDraftOverrides[date] = scheduleDraftOverrides[date] || {};
+      scheduleDraftOverrides[date][staffId] = weeklyValue;
+    } else {
+      delete scheduleDraftOverrides[date]?.[staffId];
+      if (scheduleDraftOverrides[date] && Object.keys(scheduleDraftOverrides[date]).length === 0) {
+        delete scheduleDraftOverrides[date];
+      }
+    }
+    return;
+  }
+
+  if (JSON.stringify(normalizeOverrideValue(value)) === JSON.stringify(savedValue)) {
+    delete scheduleDraftOverrides[date]?.[staffId];
+    if (scheduleDraftOverrides[date] && Object.keys(scheduleDraftOverrides[date]).length === 0) {
+      delete scheduleDraftOverrides[date];
+    }
+  } else {
+    scheduleDraftOverrides[date] = scheduleDraftOverrides[date] || {};
+    scheduleDraftOverrides[date][staffId] = value;
+  }
 }
 
 function isWeeklyDayChecked(staffId, day) {
@@ -1594,30 +1726,56 @@ function setDraftOverride(date, staffId, isWorking) {
   scheduleDraft.overrides = scheduleDraft.overrides || {};
   const day = new Date(`${date}T12:00:00`).getDay();
   const weeklyValue = (scheduleDraft.weekly?.[staffId] || []).includes(day);
-  const savedOverride = scheduleData.overrides?.[date]?.[staffId];
-  const savedValue = typeof savedOverride === "boolean"
-    ? savedOverride
-    : (scheduleData.weekly?.[staffId] || []).includes(day);
+  const existing = normalizeOverrideValue(scheduleDraft.overrides?.[date]?.[staffId]);
+  const unavailable = isWorking ? overrideUnavailableValue(existing) : null;
 
   scheduleDraft.overrides[date] = scheduleDraft.overrides[date] || {};
-  if (isWorking === weeklyValue) {
+  if (isWorking === weeklyValue && !unavailable) {
     delete scheduleDraft.overrides[date][staffId];
-  } else {
+  } else if (!unavailable) {
     scheduleDraft.overrides[date][staffId] = isWorking;
+  } else {
+    scheduleDraft.overrides[date][staffId] = {
+      ...(isWorking !== weeklyValue ? { working: isWorking } : {}),
+      unavailable
+    };
   }
   if (Object.keys(scheduleDraft.overrides[date]).length === 0) {
     delete scheduleDraft.overrides[date];
   }
 
-  if (isWorking === savedValue) {
-    delete scheduleDraftOverrides[date]?.[staffId];
-    if (scheduleDraftOverrides[date] && Object.keys(scheduleDraftOverrides[date]).length === 0) {
-      delete scheduleDraftOverrides[date];
+  syncDraftOverrideTracking(date, staffId);
+}
+
+function setDraftUnavailable(date, staffId, start, end) {
+  scheduleDraft.overrides = scheduleDraft.overrides || {};
+  scheduleDraft.overrides[date] = scheduleDraft.overrides[date] || {};
+  const person = staff.find((worker) => worker.id === staffId);
+  if (!person) return;
+
+  const day = new Date(`${date}T12:00:00`).getDay();
+  const weeklyValue = (scheduleDraft.weekly?.[staffId] || person.workDays || []).includes(day);
+  const existing = normalizeOverrideValue(scheduleDraft.overrides?.[date]?.[staffId]);
+  const working = overrideWorkingValue(existing, weeklyValue);
+  const unavailable = normalizeUnavailableRange({ start, end });
+
+  if (!unavailable) {
+    if (working === weeklyValue) {
+      delete scheduleDraft.overrides[date][staffId];
+    } else {
+      scheduleDraft.overrides[date][staffId] = working;
     }
   } else {
-    scheduleDraftOverrides[date] = scheduleDraftOverrides[date] || {};
-    scheduleDraftOverrides[date][staffId] = isWorking;
+    scheduleDraft.overrides[date][staffId] = {
+      ...(working !== weeklyValue ? { working } : {}),
+      unavailable
+    };
   }
+
+  if (Object.keys(scheduleDraft.overrides[date]).length === 0) {
+    delete scheduleDraft.overrides[date];
+  }
+  syncDraftOverrideTracking(date, staffId);
 }
 
 function moveManagerWeek(direction) {
@@ -1645,7 +1803,7 @@ function renderManager() {
       <div class="manager-heading">
         <div>
           <h2>Manager schedule</h2>
-          <p>Set weekly employee workdays and override the selected calendar date when someone is off or added. Checked means working.</p>
+          <p>Set weekly employee workdays and adjust specific dates from the selected week. Checked means working.</p>
         </div>
         <div class="manager-actions">
           <label>
@@ -1656,49 +1814,30 @@ function renderManager() {
         </div>
       </div>
 
-      <div class="manager-sections">
-        <section class="manager-panel">
-          <h3>Weekly schedule</h3>
-          <p>Checked means this employee normally works that weekday every week, including future weeks.</p>
-          <div class="manager-table">
-            ${staff.map((person) => `
-              <div class="manager-row">
-                <strong>${escapeHtml(person.name)}</strong>
-                <div class="weekday-checks">
-                  ${weekdays.map((day) => `
-                    <label>
-                      <input
-                        type="checkbox"
-                        data-weekly-staff="${escapeHtml(person.id)}"
-                        value="${day.id}"
-                        ${isWeeklyDayChecked(person.id, day.id) ? "checked" : ""}
-                      />
-                      <span>${day.label}</span>
-                    </label>
-                  `).join("")}
-                </div>
+      <section class="manager-panel">
+        <h3>Weekly schedule</h3>
+        <p>Checked means this employee normally works that weekday every week, including future weeks.</p>
+        <div class="manager-table">
+          ${staff.map((person) => `
+            <div class="manager-row">
+              <strong>${escapeHtml(person.name)}</strong>
+              <div class="weekday-checks">
+                ${weekdays.map((day) => `
+                  <label>
+                    <input
+                      type="checkbox"
+                      data-weekly-staff="${escapeHtml(person.id)}"
+                      value="${day.id}"
+                      ${isWeeklyDayChecked(person.id, day.id) ? "checked" : ""}
+                    />
+                    <span>${day.label}</span>
+                  </label>
+                `).join("")}
               </div>
-            `).join("")}
-          </div>
-        </section>
-
-        <section class="manager-panel">
-          <h3>Selected date: ${displayDate(date)}</h3>
-          <p>One-day exception only. Change a box here when someone is working or off on just this date.</p>
-          <div class="date-override-list">
-            ${staff.map((person) => `
-              <label>
-                <input
-                  type="checkbox"
-                  data-date-staff="${escapeHtml(person.id)}"
-                  ${isStaffWorking(person, date) ? "checked" : ""}
-                />
-                <span>${escapeHtml(person.name)} working on ${displayDate(date)}</span>
-              </label>
-            `).join("")}
-          </div>
-        </section>
-      </div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
 
       <section class="manager-panel manager-week-panel">
         <div class="manager-week-heading">
@@ -1712,7 +1851,7 @@ function renderManager() {
             <span aria-hidden="true">›</span>
           </button>
         </div>
-        <p>Use this for one-week exceptions. Only boxes you change here are saved as date-specific changes.</p>
+        <p>Use this for exact date changes. Uncheck a date for a full day off, or keep it checked and add unavailable hours for only that date.</p>
         <div class="week-override-table">
           <div class="week-override-header">
             <span>Employee</span>
@@ -1721,17 +1860,51 @@ function renderManager() {
           ${staff.map((person) => `
             <div class="week-override-row">
               <strong>${escapeHtml(person.name)}</strong>
-              ${weekDates.map((day) => `
-                <label>
-                  <input
-                    type="checkbox"
-                    data-week-date="${day}"
-                    data-week-date-staff="${escapeHtml(person.id)}"
-                    ${isStaffWorking(person, day) ? "checked" : ""}
-                  />
-                  <span>${new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: "short" })}</span>
-                </label>
-              `).join("")}
+              ${weekDates.map((day) => {
+                const working = isStaffWorking(person, day);
+                const unavailable = staffUnavailableRange(person, day);
+                return `
+                  <div class="week-override-cell">
+                    <label>
+                      <input
+                        type="checkbox"
+                        data-week-date="${day}"
+                        data-week-date-staff="${escapeHtml(person.id)}"
+                        ${working ? "checked" : ""}
+                      />
+                      <span>Working</span>
+                    </label>
+                    <div class="week-unavailable-controls">
+                      <span>Time off</span>
+                      <input
+                        type="time"
+                        step="900"
+                        data-unavailable-date="${day}"
+                        data-unavailable-start="${escapeHtml(person.id)}"
+                        value="${escapeHtml(unavailable?.start || "")}"
+                        ${working ? "" : "disabled"}
+                        aria-label="${escapeHtml(person.name)} unavailable start time for ${escapeHtml(displayShortDate(day))}"
+                      />
+                      <input
+                        type="time"
+                        step="900"
+                        data-unavailable-date="${day}"
+                        data-unavailable-end="${escapeHtml(person.id)}"
+                        value="${escapeHtml(unavailable?.end || "")}"
+                        ${working ? "" : "disabled"}
+                        aria-label="${escapeHtml(person.name)} unavailable end time for ${escapeHtml(displayShortDate(day))}"
+                      />
+                      <button
+                        class="button button-secondary button-compact"
+                        type="button"
+                        data-clear-unavailable="${escapeHtml(person.id)}"
+                        data-clear-unavailable-date="${day}"
+                        ${working && unavailable ? "" : "disabled"}
+                      >Clear</button>
+                    </div>
+                  </div>
+                `;
+              }).join("")}
             </div>
           `).join("")}
         </div>
@@ -1991,11 +2164,18 @@ calendarBoard?.addEventListener("change", async (event) => {
     return;
   }
 
-  const dateInput = event.target.closest("[data-date-staff]");
+  const unavailableInput = event.target.closest("[data-unavailable-start], [data-unavailable-end]");
 
-  if (dateInput) {
-    setDraftOverride(calendarDate.value || todayIso(), dateInput.dataset.dateStaff, dateInput.checked);
-    renderCalendar();
+  if (unavailableInput) {
+    const staffId = unavailableInput.dataset.unavailableStart || unavailableInput.dataset.unavailableEnd;
+    const date = unavailableInput.dataset.unavailableDate || calendarDate.value || todayIso();
+    const card = unavailableInput.closest(".week-override-cell");
+    const start = card?.querySelector("[data-unavailable-start]")?.value || "";
+    const end = card?.querySelector("[data-unavailable-end]")?.value || "";
+    if ((start && end) || (!start && !end)) {
+      setDraftUnavailable(date, staffId, start, end);
+      renderCalendar();
+    }
     return;
   }
 
@@ -2012,6 +2192,19 @@ calendarBoard?.addEventListener("change", async (event) => {
 });
 
 calendarBoard?.addEventListener("click", (event) => {
+  const clearUnavailableButton = event.target.closest("[data-clear-unavailable]");
+
+  if (clearUnavailableButton) {
+    setDraftUnavailable(
+      clearUnavailableButton.dataset.clearUnavailableDate || calendarDate.value || todayIso(),
+      clearUnavailableButton.dataset.clearUnavailable,
+      "",
+      ""
+    );
+    renderCalendar();
+    return;
+  }
+
   const createSlot = event.target.closest("[data-create-slot]");
 
   if (createSlot) {

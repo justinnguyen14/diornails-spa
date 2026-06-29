@@ -2703,6 +2703,33 @@ body.calendar-maximized .cancel-modal {
   text-transform: uppercase;
 }
 
+.schedule-unavailable-block {
+  position: absolute;
+  z-index: 2;
+  left: 0.28rem;
+  right: 0.28rem;
+  top: calc(var(--calendar-pad) + (var(--event-start) * var(--minute-height) + 0.16rem));
+  min-height: calc(var(--event-duration) * var(--minute-height) - 0.32rem);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px dashed rgba(107, 114, 128, 0.65);
+  border-radius: 0.24rem;
+  padding: 0.35rem;
+  color: #4b5563;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(229, 231, 235, 0.88),
+    rgba(229, 231, 235, 0.88) 0.45rem,
+    rgba(249, 250, 251, 0.88) 0.45rem,
+    rgba(249, 250, 251, 0.88) 0.9rem
+  );
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+}
+
 .schedule-line {
   position: absolute;
   left: 0;
@@ -3317,6 +3344,15 @@ body.calendar-maximized .cancel-modal {
   white-space: nowrap;
 }
 
+.month-work-schedule small {
+  display: block;
+  margin-top: 0.12rem;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .month-work-schedule p {
   color: var(--muted);
   background: #fffaf8;
@@ -3384,13 +3420,6 @@ body.calendar-maximized .cancel-modal {
   text-transform: uppercase;
 }
 
-.manager-sections {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(13rem, 16rem);
-  gap: var(--space-panel);
-  align-items: start;
-}
-
 .manager-panel {
   display: grid;
   gap: var(--space-panel);
@@ -3404,8 +3433,7 @@ body.calendar-maximized .cancel-modal {
   font-size: 1.5rem;
 }
 
-.manager-table,
-.date-override-list {
+.manager-table {
   display: grid;
   gap: var(--space-control);
 }
@@ -3434,8 +3462,7 @@ body.calendar-maximized .cancel-modal {
 }
 
 .weekday-checks label,
-.date-override-list label,
-.week-override-row label {
+.week-override-cell label {
   justify-content: flex-start;
   display: flex;
   align-items: center;
@@ -3452,7 +3479,7 @@ body.calendar-maximized .cancel-modal {
 }
 
 .weekday-checks label,
-.week-override-row label {
+.week-override-cell label {
   flex-direction: column;
   justify-content: center;
   gap: 0.25rem;
@@ -3461,16 +3488,8 @@ body.calendar-maximized .cancel-modal {
   overflow: hidden;
 }
 
-.date-override-list label {
-  min-height: 2.35rem;
-  padding-inline: 0.55rem;
-  font-size: 0.78rem;
-  text-align: left;
-}
-
-.weekday-checks input,
-.date-override-list input,
-.week-override-row input {
+.weekday-checks input[type="checkbox"],
+.week-override-cell input[type="checkbox"] {
   flex: 0 0 auto;
   width: 1rem;
   height: 1rem;
@@ -3478,8 +3497,7 @@ body.calendar-maximized .cancel-modal {
 }
 
 .app-page .weekday-checks input[type="checkbox"],
-.app-page .date-override-list input[type="checkbox"],
-.app-page .week-override-row input[type="checkbox"] {
+.app-page .week-override-cell input[type="checkbox"] {
   width: 0.9rem !important;
   min-width: 0.9rem !important;
   max-width: 0.9rem !important;
@@ -3489,7 +3507,7 @@ body.calendar-maximized .cancel-modal {
 }
 
 .weekday-checks label span,
-.week-override-row label span {
+.week-override-cell label span {
   display: block;
   width: 100%;
   font-size: 0.68rem;
@@ -3499,8 +3517,7 @@ body.calendar-maximized .cancel-modal {
 }
 
 .weekday-checks label:has(input:checked),
-.date-override-list label:has(input:checked),
-.week-override-row label:has(input:checked) {
+.week-override-cell label:has(input:checked) {
   border-color: rgba(201, 150, 85, 0.8);
   background: #fff3dc;
   color: var(--red);
@@ -3542,9 +3559,9 @@ body.calendar-maximized .cancel-modal {
 .week-override-header,
 .week-override-row {
   display: grid;
-  grid-template-columns: 8rem repeat(7, minmax(6rem, 1fr));
+  grid-template-columns: 6.5rem repeat(7, minmax(9.25rem, 1fr));
   gap: 0.4rem;
-  min-width: 58rem;
+  min-width: 72rem;
   align-items: stretch;
 }
 
@@ -3613,10 +3630,54 @@ body.calendar-maximized .cancel-modal {
   color: var(--ink);
 }
 
-.week-override-row label {
-  min-height: 2.5rem;
+.week-override-cell {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  border: 1px solid rgba(230, 207, 191, 0.9);
+  border-radius: 0.3rem;
+  padding: 0.45rem;
+  background: rgba(255, 250, 248, 0.72);
+}
+
+.week-override-cell label {
+  min-height: 2.4rem;
   padding-inline: 0.55rem;
   font-size: 0.78rem;
+}
+
+.week-unavailable-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.week-unavailable-controls > span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.week-unavailable-controls input {
+  width: 100%;
+  min-height: 2.3rem;
+  padding-inline: 0.5rem;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.week-unavailable-controls .button {
+  grid-column: 1 / -1;
+  min-height: 2.1rem;
+  width: 100%;
+  font-size: 0.88rem;
+  white-space: nowrap;
 }
 
 .is-hidden {
@@ -3801,8 +3862,7 @@ body.calendar-maximized .cancel-modal {
   .staff-dashboard-head,
   .calendar-toolbar,
   .staff-calendar-layout,
-  .manager-heading,
-  .manager-sections {
+  .manager-heading {
     grid-template-columns: 1fr;
   }
 
@@ -3954,14 +4014,10 @@ body.calendar-maximized .cancel-modal {
     padding-inline: max(7.5vw, calc((100vw - 112rem) / 2));
   }
 
-  .manager-sections {
-    grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
-  }
-
   .week-override-header,
   .week-override-row {
-    grid-template-columns: 10rem repeat(7, minmax(7.25rem, 1fr));
-    min-width: 68rem;
+    grid-template-columns: 7.5rem repeat(7, minmax(8.75rem, 1fr));
+    min-width: 69rem;
   }
 }
 
@@ -4389,15 +4445,6 @@ body.calendar-maximized .cancel-modal {
     padding: 0.85rem;
   }
 
-  .date-override-list {
-    gap: 0.5rem;
-  }
-
-  .date-override-list label {
-    min-height: 2.2rem;
-    font-size: 0.74rem;
-  }
-
   .weekday-checks {
     min-width: 39rem;
     grid-template-columns: repeat(7, minmax(5.35rem, 1fr));
@@ -4405,8 +4452,8 @@ body.calendar-maximized .cancel-modal {
 
   .week-override-header,
   .week-override-row {
-    grid-template-columns: 6.5rem repeat(7, minmax(5.45rem, 1fr));
-    min-width: 46rem;
+    grid-template-columns: 5.75rem repeat(7, minmax(8.5rem, 1fr));
+    min-width: 65.25rem;
   }
 
   .week-override-header span {
@@ -4421,9 +4468,13 @@ body.calendar-maximized .cancel-modal {
     font-size: 0.62rem;
   }
 
-  .week-override-row label {
+  .week-override-cell label {
     min-height: 2.25rem;
     font-size: 0.72rem;
+  }
+
+  .week-unavailable-controls input {
+    font-size: 0.76rem;
   }
 
   .manager-week-heading {

@@ -715,6 +715,63 @@ function isWeeklyStaffWorking(schedule, person, dateString) {
   return weeklyScheduleFor(schedule, person).includes(scheduleDay(dateString));
 }
 
+function normalizeUnavailableRange(value = {}) {
+  const start = String(value.start || "").trim();
+  const end = String(value.end || "").trim();
+
+  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) {
+    return null;
+  }
+
+  if (timeToMinutes(start) >= timeToMinutes(end)) {
+    return null;
+  }
+
+  return { start, end };
+}
+
+function normalizeScheduleOverrideValue(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const normalized = {};
+  if (typeof value.working === "boolean") {
+    normalized.working = value.working;
+  }
+
+  const unavailable = normalizeUnavailableRange(value.unavailable || value);
+  if (unavailable) {
+    normalized.unavailable = unavailable;
+  }
+
+  return Object.keys(normalized).length ? normalized : undefined;
+}
+
+function scheduleOverrideWorkingValue(override, fallbackWorking) {
+  if (typeof override === "boolean") {
+    return override;
+  }
+
+  if (override && typeof override === "object" && typeof override.working === "boolean") {
+    return override.working;
+  }
+
+  return fallbackWorking;
+}
+
+function scheduleOverrideUnavailable(override) {
+  if (!override || typeof override !== "object") {
+    return null;
+  }
+
+  return normalizeUnavailableRange(override.unavailable || override);
+}
+
 function setScheduleOverride(schedule, dateString, staffId, isWorking, explicitOverrideKeys) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
     return;
@@ -741,6 +798,40 @@ function setScheduleOverride(schedule, dateString, staffId, isWorking, explicitO
   }
 }
 
+function setScheduleDayOverride(schedule, dateString, staffId, value, explicitOverrideKeys) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return;
+  }
+
+  const person = bookableStaff.find((worker) => worker.id === staffId);
+  const normalized = normalizeScheduleOverrideValue(value);
+
+  if (!person || typeof normalized === "undefined") {
+    return;
+  }
+
+  const weeklyValue = isWeeklyStaffWorking(schedule, person, dateString);
+  const working = scheduleOverrideWorkingValue(normalized, weeklyValue);
+  const unavailable = scheduleOverrideUnavailable(normalized);
+  schedule.overrides[dateString] = schedule.overrides[dateString] || {};
+  explicitOverrideKeys.add(`${dateString}:${staffId}`);
+
+  if (working === weeklyValue && !unavailable) {
+    delete schedule.overrides[dateString][staffId];
+  } else if (!unavailable && typeof normalized === "boolean") {
+    schedule.overrides[dateString][staffId] = working;
+  } else {
+    schedule.overrides[dateString][staffId] = {
+      ...(working !== weeklyValue ? { working } : {}),
+      ...(unavailable ? { unavailable } : {})
+    };
+  }
+
+  if (Object.keys(schedule.overrides[dateString]).length === 0) {
+    delete schedule.overrides[dateString];
+  }
+}
+
 function pruneScheduleOverrides(schedule, changedWeeklyDaysByStaff = {}, explicitOverrideKeys = new Set()) {
   Object.entries(schedule.overrides || {}).forEach(([dateString, overrides]) => {
     if (!overrides || typeof overrides !== "object") {
@@ -754,13 +845,23 @@ function pruneScheduleOverrides(schedule, changedWeeklyDaysByStaff = {}, explici
       const overrideKey = `${dateString}:${person.id}`;
       const changedDays = changedWeeklyDaysByStaff[person.id] || new Set();
       const weeklyValue = isWeeklyStaffWorking(schedule, person, dateString);
+      const normalized = normalizeScheduleOverrideValue(overrides[person.id]);
+      const working = scheduleOverrideWorkingValue(normalized, weeklyValue);
+      const unavailable = scheduleOverrideUnavailable(normalized);
 
       if (
-        typeof overrides[person.id] !== "boolean" ||
-        overrides[person.id] === weeklyValue ||
+        typeof normalized === "undefined" ||
+        (working === weeklyValue && !unavailable) ||
         (changedDays.has(day) && !explicitOverrideKeys.has(overrideKey))
       ) {
         delete overrides[person.id];
+      } else if (unavailable || typeof normalized === "object") {
+        overrides[person.id] = {
+          ...(working !== weeklyValue ? { working } : {}),
+          ...(unavailable ? { unavailable } : {})
+        };
+      } else {
+        overrides[person.id] = working;
       }
     });
 
@@ -914,17 +1015,23 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
 
 function isStaffAvailable(bookings, staffId, date, time, durationMinutes = 60, options = {}) {
   const worker = bookableStaff.find((person) => person.id === staffId);
+  const schedule = readSchedule();
 
   if (isPastDate(date) || (!options.ignorePastSlot && isPastSlot(date, time)) || !appointmentFitsSalonHours(date, time, durationMinutes)) {
     return false;
   }
 
-  if (!worker || !isStaffWorking(worker, date)) {
+  if (!worker || !isStaffWorkingFromSchedule(worker, date, schedule)) {
     return false;
   }
 
   const start = timeToMinutes(time);
   const end = start + durationMinutes;
+  const unavailable = staffUnavailableRangeFromSchedule(worker, date, schedule);
+
+  if (unavailable && overlaps(start, end, timeToMinutes(unavailable.start), timeToMinutes(unavailable.end))) {
+    return false;
+  }
 
   return !bookings.some((booking) => {
     if (booking.status === "cancelled" || booking.staffId !== staffId || booking.date !== date) {
@@ -954,12 +1061,22 @@ function isStaffWorking(worker, dateString) {
 
 function isStaffWorkingFromSchedule(worker, dateString, schedule) {
   const override = schedule.overrides?.[dateString]?.[worker.id];
+  const weeklyValue = isWeeklyStaffWorking(schedule, worker, dateString);
 
   if (typeof override === "boolean") {
     return override;
   }
 
-  return isWeeklyStaffWorking(schedule, worker, dateString);
+  if (override && typeof override === "object" && typeof override.working === "boolean") {
+    return override.working;
+  }
+
+  return weeklyValue;
+}
+
+function staffUnavailableRangeFromSchedule(worker, dateString, schedule) {
+  const override = schedule.overrides?.[dateString]?.[worker.id];
+  return scheduleOverrideUnavailable(override);
 }
 
 function assignStaff(bookings, requestedStaffId, date, time, durationMinutes, options = {}) {
@@ -1401,8 +1518,9 @@ async function handleApi(req, res, pathname, searchParams) {
 
     if (input.date && input.overrides && typeof input.overrides === "object") {
       bookableStaff.forEach((person) => {
-        if (typeof input.overrides[person.id] === "boolean") {
-          setScheduleOverride(schedule, input.date, person.id, input.overrides[person.id], explicitOverrideKeys);
+        const override = normalizeScheduleOverrideValue(input.overrides[person.id]);
+        if (typeof override !== "undefined") {
+          setScheduleDayOverride(schedule, input.date, person.id, override, explicitOverrideKeys);
         }
       });
     }
@@ -1413,8 +1531,9 @@ async function handleApi(req, res, pathname, searchParams) {
           return;
         }
         bookableStaff.forEach((person) => {
-          if (typeof overrides[person.id] === "boolean") {
-            setScheduleOverride(schedule, date, person.id, overrides[person.id], explicitOverrideKeys);
+          const override = normalizeScheduleOverrideValue(overrides[person.id]);
+          if (typeof override !== "undefined") {
+            setScheduleDayOverride(schedule, date, person.id, override, explicitOverrideKeys);
           }
         });
       });
