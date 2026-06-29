@@ -689,13 +689,21 @@ a {
 
 .booking-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
+  align-items: center;
   align-content: center;
   min-height: 7rem;
   padding: 1rem 1.1rem;
   background: rgba(255, 255, 255, 0.68);
   border: 1px solid rgba(230, 207, 191, 0.82);
   border-radius: 0.28rem;
+}
+
+.booking-panel-copy {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
 }
 
 .booking-panel p {
@@ -710,6 +718,35 @@ a {
 
 .booking-actions .button {
   min-width: 13rem;
+}
+
+.site-qr-card {
+  display: grid;
+  gap: 0.45rem;
+  justify-items: center;
+  width: clamp(6.75rem, 9vw, 8.6rem);
+  padding: 0.58rem;
+  border: 1px solid rgba(230, 207, 191, 0.92);
+  border-radius: 0.32rem;
+  color: var(--red);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 26px rgba(93, 45, 38, 0.08);
+}
+
+.site-qr-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 0.16rem;
+}
+
+.site-qr-card span {
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: uppercase;
 }
 
 .booking-form {
@@ -3962,6 +3999,10 @@ body.calendar-maximized .cancel-modal {
     grid-template-columns: 1fr;
   }
 
+  .booking-panel {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .booking-form {
     grid-template-columns: repeat(3, minmax(10rem, 1fr));
   }
@@ -4662,8 +4703,18 @@ body.calendar-maximized .cancel-modal {
     display: grid;
   }
 
+  .booking-panel {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
   .booking-actions .button {
     min-width: 0;
+  }
+
+  .site-qr-card {
+    justify-self: center;
+    width: min(8rem, 48vw);
   }
 
   .booking-submit,
