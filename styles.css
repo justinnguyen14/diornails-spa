@@ -2624,7 +2624,10 @@ body.calendar-maximized .cancel-modal {
 
 .schedule-heading {
   min-width: 0;
-  padding: 0.62rem 0.45rem;
+  min-height: 3.3rem;
+  display: grid;
+  place-items: center;
+  padding: 0.48rem 0.45rem;
   color: var(--red);
   border-right: 1px solid var(--line);
   font-size: 0.72rem;
@@ -2632,9 +2635,9 @@ body.calendar-maximized .cancel-modal {
   letter-spacing: 0.02em;
   text-align: center;
   text-transform: uppercase;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.18;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .schedule-heading > span {
