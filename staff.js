@@ -19,8 +19,8 @@ let staff = [];
 let bookings = [];
 let selectedBookingId = "";
 let editingBookingId = "";
-let scheduleData = { weekly: {}, overrides: {} };
-let scheduleDraft = { weekly: {}, overrides: {} };
+let scheduleData = { weekly: {}, overrides: {}, closures: {} };
+let scheduleDraft = { weekly: {}, overrides: {}, closures: {} };
 let scheduleDraftOverrides = {};
 let pendingStaffCancel = null;
 let serviceGroups = [];
@@ -107,28 +107,33 @@ function displayShortDate(value) {
   return `${month}/${day}/${year}`;
 }
 
+function displayBirthday(value) {
+  const trimmed = String(value || "").trim();
+  const isoMatch = trimmed.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  const storedMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})$/);
+  const displayMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})(?:\/\d{4})?$/);
+  const match = isoMatch || storedMatch || displayMatch;
+  return match ? `${String(Number(match[1])).padStart(2, "0")}/${String(Number(match[2])).padStart(2, "0")}` : "";
+}
+
 function normalizeBirthdayInput(value) {
   const trimmed = String(value || "").trim();
   if (!trimmed) return { value: "", valid: true };
 
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const shortMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  const year = isoMatch ? Number(isoMatch[1]) : shortMatch ? Number(shortMatch[3]) : NaN;
-  const month = isoMatch ? Number(isoMatch[2]) : shortMatch ? Number(shortMatch[1]) : NaN;
-  const day = isoMatch ? Number(isoMatch[3]) : shortMatch ? Number(shortMatch[2]) : NaN;
-  const currentYear = new Date().getFullYear();
-  const date = new Date(year, month - 1, day);
-  const valid = Number.isInteger(year)
-    && Number.isInteger(month)
+  const isoMatch = trimmed.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  const storedMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})$/);
+  const displayMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})(?:\/\d{4})?$/);
+  const match = isoMatch || storedMatch || displayMatch;
+  const month = match ? Number(match[1]) : NaN;
+  const day = match ? Number(match[2]) : NaN;
+  const date = new Date(2000, month - 1, day);
+  const valid = Number.isInteger(month)
     && Number.isInteger(day)
-    && year >= 1900
-    && year <= currentYear
-    && date.getFullYear() === year
     && date.getMonth() === month - 1
     && date.getDate() === day;
 
   return valid
-    ? { value: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`, valid: true }
+    ? { value: `${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`, valid: true }
     : { value: "", valid: false };
 }
 
@@ -148,12 +153,13 @@ function managerDateHeader(value) {
 }
 
 function cloneSchedule(schedule) {
-  return JSON.parse(JSON.stringify(schedule || { weekly: {}, overrides: {} }));
+  return JSON.parse(JSON.stringify(schedule || { weekly: {}, overrides: {}, closures: {} }));
 }
 
 function normalizedSchedule(schedule) {
   const weekly = {};
   const overrides = {};
+  const closures = {};
 
   Object.keys(schedule?.weekly || {}).sort().forEach((staffId) => {
     weekly[staffId] = [...new Set((schedule.weekly[staffId] || []).map(Number))].sort((a, b) => a - b);
@@ -170,7 +176,14 @@ function normalizedSchedule(schedule) {
     if (Object.keys(values).length) overrides[date] = values;
   });
 
-  return { weekly, overrides };
+  Object.keys(schedule?.closures || {}).sort().forEach((date) => {
+    const reason = String(schedule.closures[date] || "Salon closed").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      closures[date] = reason || "Salon closed";
+    }
+  });
+
+  return { weekly, overrides, closures };
 }
 
 function hasUnsavedScheduleChanges() {
@@ -384,23 +397,39 @@ function formatPhone(value) {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
-function serviceSelectOptions() {
+function bookingServiceNames(booking) {
+  if (Array.isArray(booking?.services) && booking.services.length) {
+    return booking.services;
+  }
+  if (serviceDurations[booking?.service]) {
+    return [booking.service];
+  }
+  return String(booking?.service || "")
+    .split(" + ")
+    .map((service) => service.trim())
+    .filter((service) => serviceDurations[service]);
+}
+
+function serviceSelectOptions(selectedServices = []) {
   return serviceGroups.map((group) => `
     <optgroup label="${escapeHtml(group.name)}">
       ${group.services.map((service) => `
-        <option value="${escapeHtml(service)}">${escapeHtml(service)} (${serviceDurations[service] || 60} min)</option>
+        <option value="${escapeHtml(service)}" ${selectedServices.includes(service) ? "selected" : ""}>${escapeHtml(service)} (${serviceDurations[service] || 60} min)</option>
       `).join("")}
     </optgroup>
   `).join("");
 }
 
-function staffBookingServiceOptions(filter = "") {
+function staffBookingServiceOptions(filter = "", selectedServices = []) {
   const normalized = String(filter || "").trim().toLowerCase();
   return serviceGroups
     .map((group) => ({
       ...group,
       services: [...group.services]
-        .filter((service) => service.toLowerCase().includes(normalized))
+        .filter((service) => (
+          !selectedServices.includes(service) &&
+          service.toLowerCase().includes(normalized)
+        ))
         .sort((a, b) => a.localeCompare(b))
     }))
     .filter((group) => group.services.length)
@@ -415,6 +444,53 @@ function staffBookingServiceOptions(filter = "") {
         `).join("")}
       </div>
     `).join("") || '<p class="search-select-empty">No matching services</p>';
+}
+
+function staffSelectedServices(form) {
+  try {
+    return JSON.parse(form?.dataset.services || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function renderStaffSelectedServices(form, selectedServices = staffSelectedServices(form)) {
+  if (!form) return;
+  form.dataset.services = JSON.stringify(selectedServices);
+  const hiddenInput = form.querySelector("#staff-booking-primary-service");
+  const searchInput = form.querySelector("#staff-booking-service");
+  const list = form.querySelector("#staff-booking-selected-services");
+  const addButton = form.querySelector("[data-add-staff-service]");
+  if (hiddenInput) hiddenInput.value = selectedServices[0] || "";
+  if (searchInput) {
+    searchInput.placeholder = selectedServices.length
+      ? "Choose or search another service"
+      : "Choose or search service";
+  }
+  if (addButton) addButton.hidden = selectedServices.length === 0;
+  if (list) {
+    list.innerHTML = selectedServices.map((service) => `
+      <div class="selected-service-item">
+        <span>${escapeHtml(service)} <small>${Number(serviceDurations[service] || 60)} min</small></span>
+        <button
+          class="selected-service-remove"
+          type="button"
+          data-remove-staff-service="${escapeHtml(service)}"
+          aria-label="Remove ${escapeHtml(service)}"
+          title="Remove service"
+        >&times;</button>
+      </div>
+    `).join("");
+  }
+}
+
+function addStaffSelectedService(form, service) {
+  const selectedServices = staffSelectedServices(form);
+  if (!service || selectedServices.includes(service)) {
+    return;
+  }
+  selectedServices.push(service);
+  renderStaffSelectedServices(form, selectedServices);
 }
 
 function staffBookingWorkerOptions(filter = "") {
@@ -454,7 +530,7 @@ function renderStaffBookingSearchMenus(form) {
   if (!form) return;
   const serviceMenu = form.querySelector("#staff-booking-service-options");
   const workerMenu = form.querySelector("#staff-booking-worker-options");
-  if (serviceMenu) serviceMenu.innerHTML = staffBookingServiceOptions();
+  if (serviceMenu) serviceMenu.innerHTML = staffBookingServiceOptions("", staffSelectedServices(form));
   if (workerMenu) workerMenu.innerHTML = staffBookingWorkerOptions();
 }
 
@@ -463,23 +539,33 @@ function updateStaffBookingClosingLimit(form) {
     return;
   }
 
-  const serviceInput = form.elements.service;
   const dateInput = form.elements.date;
   const timeInput = form.elements.time;
   const helper = form.querySelector("#staff-time-limit");
-  const duration = Number(serviceDurations[serviceInput.value] || 0);
+  const selectedServices = staffSelectedServices(form);
+  const duration = selectedServices.reduce(
+    (total, service) => total + Number(serviceDurations[service] || 60),
+    0
+  );
 
   if (!dateInput.value || !duration) {
     timeInput.removeAttribute("min");
     timeInput.removeAttribute("max");
     timeInput.setCustomValidity("");
-    helper.textContent = "Choose a service to calculate the latest available start time.";
+    helper.textContent = "Choose one or more services to calculate the latest available start time.";
     return;
   }
 
   const hours = getHours(dateInput.value);
   const openingMinutes = timeToMinutes(hours.open);
   const latestUnalignedStart = timeToMinutes(hours.close) - duration;
+  if (latestUnalignedStart < openingMinutes) {
+    timeInput.min = hours.open;
+    timeInput.max = hours.close;
+    timeInput.setCustomValidity("");
+    helper.textContent = `These services need ${duration} minutes and do not fit within this day's salon hours. Submit to review the constraint, then choose Book Anyway if needed.`;
+    return;
+  }
   const latestStart = openingMinutes + Math.floor((latestUnalignedStart - openingMinutes) / 15) * 15;
   const latestTime = minutesToTime(latestStart);
   timeInput.min = hours.open;
@@ -489,8 +575,8 @@ function updateStaffBookingClosingLimit(form) {
 
   timeInput.setCustomValidity("");
   helper.textContent = fits || !timeInput.value
-    ? `This service should start by ${displayTime(latestTime)} to finish before the ${displayTime(hours.close)} closing time.`
-    : `This service normally needs to start by ${displayTime(latestTime)}. Submit to review the constraint, then choose Book Anyway if needed.`;
+    ? `These services need ${duration} minutes and should start by ${displayTime(latestTime)} to finish before the ${displayTime(hours.close)} closing time.`
+    : `These services need ${duration} minutes and normally must start by ${displayTime(latestTime)}. Submit to review the constraint, then choose Book Anyway if needed.`;
 }
 
 function openStaffBookingModal({ date, time, staffId = "" }) {
@@ -523,8 +609,8 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
               <input name="firstName" autocomplete="given-name" required />
             </label>
             <label>
-              <span>Last name</span>
-              <input name="lastName" autocomplete="family-name" required />
+              <span>Last name (optional)</span>
+              <input name="lastName" autocomplete="family-name" />
             </label>
             <label>
               <span>Phone number</span>
@@ -539,20 +625,21 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
               <span>Customer agreed to receive appointment confirmation and cancellation texts.</span>
             </label>
             <label class="staff-booking-wide">
-              <span>Service</span>
+              <span>Services</span>
               <div class="search-select staff-booking-search-select">
                 <input
-                  name="service"
                   id="staff-booking-service"
                   autocomplete="off"
                   placeholder="Choose or search service"
                   role="combobox"
                   aria-controls="staff-booking-service-options"
                   aria-expanded="false"
-                  required
                 />
                 <div class="search-select-menu" id="staff-booking-service-options" role="listbox"></div>
               </div>
+              <input name="service" id="staff-booking-primary-service" type="hidden" required />
+              <div class="selected-services" id="staff-booking-selected-services" aria-live="polite"></div>
+              <button class="add-service-button" type="button" data-add-staff-service hidden>Add additional service</button>
             </label>
             <label>
               <span>Nail tech</span>
@@ -578,7 +665,7 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
             <label>
               <span>Start time</span>
               <input name="time" type="time" step="900" value="${escapeHtml(time)}" required />
-              <small id="staff-time-limit">Choose a service to calculate the latest available start time.</small>
+              <small id="staff-time-limit">Choose one or more services to calculate the latest available start time.</small>
             </label>
             <label class="staff-booking-wide">
               <span>Notes</span>
@@ -598,6 +685,7 @@ function openStaffBookingModal({ date, time, staffId = "" }) {
   `);
 
   const form = document.querySelector("#staff-booking-form");
+  renderStaffSelectedServices(form, []);
   renderStaffBookingSearchMenus(form);
   document.querySelector("#staff-customer-search")?.focus();
   updateStaffBookingClosingLimit(form);
@@ -672,11 +760,11 @@ function peopleRecordForm() {
       <h3 data-people-form-title>Add new customer</h3>
       <div class="people-name-grid">
         <label><span>First name</span><input name="firstName" required /></label>
-        <label><span>Last name</span><input name="lastName" required /></label>
+        <label><span>Last name (optional)</span><input name="lastName" /></label>
       </div>
       <label><span>Phone</span><input name="phone" type="tel" inputmode="tel" placeholder="10 digit phone number" required /></label>
       <label><span>Email</span><input name="email" type="email" placeholder="Optional email" /></label>
-      <label><span>Date of birth</span><input name="birthday" inputmode="numeric" placeholder="MM/DD/YYYY" /></label>
+      <label><span>Birthday</span><input name="birthday" inputmode="numeric" placeholder="MM/DD" maxlength="5" /></label>
       <label class="people-check"><input name="smsConsent" type="checkbox" /><span>Customer agreed to receive appointment confirmations, reminders, account/check-in updates, birthday-week gifts, and salon offers by text. Message/data rates may apply; reply STOP to opt out.</span></label>
       <div class="people-form-actions">
         <button class="button" type="button" data-save-people>Add Customer</button>
@@ -710,7 +798,7 @@ function renderPeopleWorkspace() {
           : [
               record.phone ? `Phone: ${record.phone}` : "",
               record.email ? `Email: ${record.email}` : "",
-              peopleTab === "customers" && record.birthday ? `Birthday: ${displayShortDate(record.birthday)}` : ""
+              peopleTab === "customers" && record.birthday ? `Birthday: ${displayBirthday(record.birthday)}` : ""
             ].filter(Boolean);
         const scheduledDays = peopleTab === "employees"
           ? weekDatesFor(calendarDate.value || todayIso()).filter((date) => isStaffWorking(record, date)).length
@@ -803,7 +891,7 @@ function peopleSearchText(record) {
     ? [record.name, record.category, record.price, record.durationMinutes]
     : peopleTab === "employees"
       ? [record.name, record.phone, record.email]
-      : [record.firstName, record.lastName, `${record.firstName || ""} ${record.lastName || ""}`, record.phone, record.email, record.birthday, displayShortDate(record.birthday)];
+      : [record.firstName, record.lastName, `${record.firstName || ""} ${record.lastName || ""}`, record.phone, record.email, record.birthday, displayBirthday(record.birthday)];
   return fields
     .filter((value) => value !== undefined && value !== null)
     .join(" ")
@@ -905,7 +993,7 @@ function fillPeopleForm(recordId) {
     if (!field) return;
     if (field.type === "checkbox") field.checked = Boolean(value);
     else {
-      field.value = peopleTab === "customers" && key === "birthday" && value ? displayShortDate(value) : value || "";
+      field.value = peopleTab === "customers" && key === "birthday" && value ? displayBirthday(value) : value || "";
       if (peopleTab === "services" && key === "durationMinutes" && !field.value) {
         field.insertAdjacentHTML("afterbegin", `<option value="${Number(value)}" disabled>${Number(value)} minutes (choose a 15 minute interval)</option>`);
         field.value = String(value);
@@ -1058,7 +1146,7 @@ async function loadSchedule() {
     throw new Error(data.error || "Unable to load employee schedule.");
   }
 
-  scheduleData = data.schedule || { weekly: {}, overrides: {} };
+  scheduleData = data.schedule || { weekly: {}, overrides: {}, closures: {} };
   scheduleDraft = cloneSchedule(scheduleData);
   scheduleDraftOverrides = {};
 }
@@ -1222,7 +1310,7 @@ function groupedBookingsByTime(bookingsForColumn) {
 }
 
 function renderCreateSlots(column, range) {
-  if (!column.date) {
+  if (!column.date || column.isClosed || salonClosureForDate(column.date)) {
     return "";
   }
 
@@ -1309,6 +1397,22 @@ function calendarNavigationButton(label, direction) {
   `;
 }
 
+function calendarHeadingDateButton(title, subtitle = "") {
+  return `
+    <label class="calendar-heading-date-button" title="Choose date">
+      <input
+        class="calendar-heading-date-input"
+        type="date"
+        value="${escapeHtml(calendarDate.value || todayIso())}"
+        data-calendar-heading-date
+        aria-label="Choose calendar date"
+      />
+      <strong>${escapeHtml(title)}</strong>
+      ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+    </label>
+  `;
+}
+
 function renderSchedule(columns, days, compact = false) {
   const range = scheduleRange(days);
   const labels = scheduleLabels(range.open, range.close);
@@ -1322,9 +1426,9 @@ function renderSchedule(columns, days, compact = false) {
       <div class="schedule-header">
         <div class="schedule-corner"></div>
         ${columns.map((column) => `
-          <div class="schedule-heading ${column.isOff ? "schedule-heading-off" : ""}">
+          <div class="schedule-heading ${column.isOff ? "schedule-heading-off" : ""} ${column.isClosed ? "schedule-heading-closed" : ""}">
             ${escapeHtml(column.title)}
-            ${column.isOff ? "<span>Off</span>" : ""}
+            ${column.isClosed ? "<span>Salon closed</span>" : column.isOff ? "<span>Off</span>" : ""}
           </div>
         `).join("")}
       </div>
@@ -1346,11 +1450,15 @@ function renderSchedule(columns, days, compact = false) {
         </div>
         ${columns.map((column) => {
           return `
-          <section class="schedule-column ${column.isOff ? "schedule-column-off" : ""}" aria-label="${escapeHtml(column.title)}${column.isOff ? " - off" : ""}">
+          <section class="schedule-column ${column.isOff ? "schedule-column-off" : ""} ${column.isClosed ? "schedule-column-closed" : ""}" aria-label="${escapeHtml(column.title)}${column.isClosed ? " - salon closed" : column.isOff ? " - off" : ""}">
             ${labels.map((minutes) => `
               <div class="schedule-line" style="--line-offset: ${Math.max(0, minutes - range.open)};"></div>
             `).join("")}
-            ${column.isOff ? '<div class="schedule-off-message">Not working</div>' : renderCreateSlots(column, range)}
+            ${column.isClosed
+              ? `<div class="schedule-off-message">Salon closed${column.closureReason ? `<small>${escapeHtml(column.closureReason)}</small>` : ""}</div>`
+              : column.isOff
+                ? '<div class="schedule-off-message">Not working</div>'
+                : renderCreateSlots(column, range)}
             ${renderUnavailableBlock(column, range)}
             ${groupedBookingsByTime(column.bookings).map((group) => renderScheduleEvent(group[0], range.open, compact, group.length, group)).join("")}
           </section>
@@ -1377,15 +1485,18 @@ function renderDay() {
   const date = calendarDate.value || todayIso();
   const selectedStaffId = calendarStaff.value || "all";
   const isSingleWorker = selectedStaffId !== "all";
+  const closureReason = salonClosureForDate(date);
   const visibleStaff = selectedStaffId === "all"
-    ? staff.filter((person) => isStaffWorking(person, date))
+    ? (closureReason ? staff : staff.filter((person) => isStaffWorking(person, date)))
     : staff.filter((person) => person.id === selectedStaffId);
   const columns = visibleStaff.map((person) => ({
     title: `${person.name} - ${displayDate(date)}`,
     date,
     staffId: person.id,
-    isOff: !isStaffWorking(person, date),
-    unavailable: staffUnavailableRange(person, date),
+    isOff: !closureReason && !isStaffWorking(person, date),
+    isClosed: Boolean(closureReason),
+    closureReason,
+    unavailable: closureReason ? null : staffUnavailableRange(person, date),
     bookings: bookings
       .filter((booking) => booking.date === date && booking.staffId === person.id)
       .sort((a, b) => a.time.localeCompare(b.time))
@@ -1398,13 +1509,14 @@ function renderDay() {
         <div class="calendar-heading-main">
           <div class="calendar-heading-title">
             ${calendarNavigationButton("day", -1)}
-            <h2>${displayDate(date)}</h2>
+            ${calendarHeadingDateButton(displayDate(date))}
             ${calendarNavigationButton("day", 1)}
           </div>
           <span>${appointmentCount} appointment${appointmentCount === 1 ? "" : "s"}</span>
         </div>
         ${maximizeButton("day calendar")}
       </div>
+      ${closureReason ? `<div class="salon-closure-banner"><strong>Salon closed</strong><span>${escapeHtml(closureReason)}</span></div>` : ""}
       ${columns.length ? `
         <div class="staff-calendar-layout ${isSingleWorker ? "staff-calendar-layout-wide" : ""}">
           ${renderSchedule(columns, [date], true)}
@@ -1422,16 +1534,21 @@ function renderWeek() {
   const selectedStaffId = calendarStaff.value || "all";
   const selectedStaff = staff.find((person) => person.id === selectedStaffId);
   const selectedStaffName = selectedStaff?.name;
-  const columns = days.map((day) => ({
-    title: displayDate(day),
-    date: day,
-    staffId: selectedStaffId !== "all" ? selectedStaffId : "",
-    isOff: Boolean(selectedStaff && !isStaffWorking(selectedStaff, day)),
-    unavailable: selectedStaff ? staffUnavailableRange(selectedStaff, day) : null,
-    bookings: bookings
-      .filter((booking) => booking.date === day)
-      .sort((a, b) => a.time.localeCompare(b.time))
-  }));
+  const columns = days.map((day) => {
+    const closureReason = salonClosureForDate(day);
+    return {
+      title: displayDate(day),
+      date: day,
+      staffId: selectedStaffId !== "all" ? selectedStaffId : "",
+      isOff: Boolean(!closureReason && selectedStaff && !isStaffWorking(selectedStaff, day)),
+      isClosed: Boolean(closureReason),
+      closureReason,
+      unavailable: closureReason ? null : selectedStaff ? staffUnavailableRange(selectedStaff, day) : null,
+      bookings: bookings
+        .filter((booking) => booking.date === day)
+        .sort((a, b) => a.time.localeCompare(b.time))
+    };
+  });
   const appointmentCount = columns.reduce((sum, column) => sum + column.bookings.length, 0);
 
   calendarBoard.innerHTML = `
@@ -1440,10 +1557,12 @@ function renderWeek() {
         <div class="calendar-heading-main">
           <div class="calendar-heading-title">
             ${calendarNavigationButton("week", -1)}
-            <h2>${selectedStaffName ? `${selectedStaffName}'s week` : "All workers week"}</h2>
+            ${calendarHeadingDateButton(
+              selectedStaffName ? `${selectedStaffName}'s week` : "All workers week",
+              `${displayDate(days[0])} - ${displayDate(days[6])}`
+            )}
             ${calendarNavigationButton("week", 1)}
           </div>
-          <span>${displayDate(days[0])} - ${displayDate(days[6])}</span>
           <span>${appointmentCount} appointment${appointmentCount === 1 ? "" : "s"}</span>
         </div>
         ${maximizeButton("week calendar")}
@@ -1484,8 +1603,11 @@ function renderBookingDetails() {
             <input name="customerName" value="${escapeHtml(booking.customerName)}" required />
           </label>
           <label>
-            <span>Service</span>
-            <input name="service" value="${escapeHtml(booking.service)}" required />
+            <span>Services</span>
+            <select name="services" multiple size="7" required>
+              ${serviceSelectOptions(bookingServiceNames(booking))}
+            </select>
+            <small>Select every service included in this appointment.</small>
           </label>
           <label>
             <span>Nail tech</span>
@@ -1605,7 +1727,7 @@ function renderMonth() {
         <div class="calendar-heading-main">
           <div class="calendar-heading-title">
             ${calendarNavigationButton("month", -1)}
-            <h2>${monthName}</h2>
+            ${calendarHeadingDateButton(monthName)}
             ${calendarNavigationButton("month", 1)}
           </div>
           <span>Employee work schedule</span>
@@ -1622,13 +1744,16 @@ function renderMonth() {
           }
 
           const dayNumber = new Date(`${day}T12:00:00`).getDate();
+          const closureReason = salonClosureForDate(day);
           const workingStaff = visibleStaff.filter((person) => isStaffWorking(person, day));
 
           return `
-            <section class="month-cell" aria-label="${displayDate(day)}">
+            <section class="month-cell ${closureReason ? "month-cell-closed" : ""}" aria-label="${displayDate(day)}${closureReason ? ` - closed: ${escapeHtml(closureReason)}` : ""}">
               <div class="month-date-number">${dayNumber}</div>
               <div class="month-work-schedule">
-                ${workingStaff.length
+                ${closureReason
+                  ? `<p class="salon-closed-label">Closed<small>${escapeHtml(closureReason)}</small></p>`
+                  : workingStaff.length
                   ? workingStaff.map((person) => {
                     const unavailable = staffUnavailableRange(person, day);
                     return `<span style="${workerColorStyle(person.id)}">${escapeHtml(person.name)}${unavailable ? ` <small>${escapeHtml(displayTime(unavailable.start))}-${escapeHtml(displayTime(unavailable.end))}</small>` : ""}</span>`;
@@ -1643,7 +1768,15 @@ function renderMonth() {
   `;
 }
 
+function salonClosureForDate(dateString, schedule = activeSchedule()) {
+  return String(schedule?.closures?.[dateString] || "").trim();
+}
+
 function isStaffWorking(person, dateString) {
+  if (salonClosureForDate(dateString)) {
+    return false;
+  }
+
   const day = new Date(`${dateString}T12:00:00`).getDay();
   const schedule = activeSchedule();
   const override = schedule.overrides?.[dateString]?.[person.id];
@@ -1788,6 +1921,8 @@ function moveManagerWeek(direction) {
 function renderManager() {
   const date = calendarDate.value || todayIso();
   const weekDates = weekDatesFor(date);
+  const closures = Object.entries(scheduleDraft.closures || {})
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB));
   const weekdays = [
     { id: 0, label: "Sunday" },
     { id: 1, label: "Monday" },
@@ -1813,6 +1948,41 @@ function renderManager() {
           <button class="button" type="button" id="save-schedule">Save Schedule</button>
         </div>
       </div>
+
+      <section class="manager-panel manager-closure-panel">
+        <div>
+          <h3>Salon closures</h3>
+          <p>Close the entire salon for a holiday or other specific date. No appointments can be booked that day.</p>
+        </div>
+        <div class="manager-closure-form">
+          <label>
+            <span>Closed date</span>
+            <input id="salon-closure-date" type="date" value="${date}" />
+          </label>
+          <label>
+            <span>Reason</span>
+            <input id="salon-closure-reason" type="text" maxlength="120" placeholder="Holiday or closure reason" />
+          </label>
+          <button class="button button-secondary" id="add-salon-closure" type="button">Add Closure</button>
+        </div>
+        <div class="manager-closure-list">
+          ${closures.length
+            ? closures.map(([closedDate, reason]) => `
+              <div class="manager-closure-item">
+                <div>
+                  <strong>${escapeHtml(displayDate(closedDate))}</strong>
+                  <span>${escapeHtml(reason)}</span>
+                </div>
+                <button
+                  class="button button-secondary button-compact"
+                  type="button"
+                  data-remove-salon-closure="${escapeHtml(closedDate)}"
+                >Remove</button>
+              </div>
+            `).join("")
+            : '<p class="manager-closure-empty">No salon closures scheduled.</p>'}
+        </div>
+      </section>
 
       <section class="manager-panel">
         <h3>Weekly schedule</h3>
@@ -1861,6 +2031,15 @@ function renderManager() {
             <div class="week-override-row">
               <strong>${escapeHtml(person.name)}</strong>
               ${weekDates.map((day) => {
+                const closureReason = salonClosureForDate(day);
+                if (closureReason) {
+                  return `
+                    <div class="week-override-cell week-override-cell-closed">
+                      <strong>Salon closed</strong>
+                      <span>${escapeHtml(closureReason)}</span>
+                    </div>
+                  `;
+                }
                 const working = isStaffWorking(person, day);
                 const unavailable = staffUnavailableRange(person, day);
                 return `
@@ -2010,6 +2189,7 @@ async function saveScheduleDraft(statusElement = document.querySelector("#manage
   const saveButtons = document.querySelectorAll("#save-schedule, [data-manager-save-leave]");
   const weekly = cloneSchedule(scheduleDraft.weekly || {});
   const overrideDates = cloneSchedule(scheduleDraftOverrides);
+  const closures = cloneSchedule(scheduleDraft.closures || {});
 
   saveButtons.forEach((button) => {
     button.disabled = true;
@@ -2026,6 +2206,7 @@ async function saveScheduleDraft(statusElement = document.querySelector("#manage
       },
       body: JSON.stringify({
         weekly,
+        closures,
         ...(Object.keys(overrideDates).length ? { overrideDates } : {})
       })
     });
@@ -2062,6 +2243,32 @@ calendarBoard?.addEventListener("click", async (event) => {
 
   if (maximizeButton) {
     toggleCalendarMaximize();
+    return;
+  }
+
+  const addClosureButton = event.target.closest("#add-salon-closure");
+  if (addClosureButton) {
+    const dateInput = calendarBoard.querySelector("#salon-closure-date");
+    const reasonInput = calendarBoard.querySelector("#salon-closure-reason");
+    const closedDate = dateInput?.value || "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(closedDate)) {
+      const status = document.querySelector("#manager-status");
+      status.textContent = "Choose a valid closure date.";
+      status.dataset.type = "error";
+      dateInput?.focus();
+      return;
+    }
+    scheduleDraft.closures = scheduleDraft.closures || {};
+    scheduleDraft.closures[closedDate] = reasonInput?.value.trim() || "Salon closed";
+    renderCalendar();
+    return;
+  }
+
+  const removeClosureButton = event.target.closest("[data-remove-salon-closure]");
+  if (removeClosureButton) {
+    scheduleDraft.closures = scheduleDraft.closures || {};
+    delete scheduleDraft.closures[removeClosureButton.dataset.removeSalonClosure];
+    renderCalendar();
     return;
   }
 
@@ -2143,6 +2350,17 @@ window.addEventListener("beforeunload", (event) => {
 });
 
 calendarBoard?.addEventListener("change", async (event) => {
+  const headingDateInput = event.target.closest("[data-calendar-heading-date]");
+
+  if (headingDateInput) {
+    calendarDate.value = headingDateInput.value || todayIso();
+    selectedBookingId = "";
+    editingBookingId = "";
+    bookingDetailsPinned = false;
+    await loadBookings();
+    return;
+  }
+
   const weekInput = event.target.closest("#manager-week-date");
 
   if (weekInput) {
@@ -2301,6 +2519,7 @@ calendarBoard?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const bookingId = form.dataset.editBookingForm;
   const formData = Object.fromEntries(new FormData(form).entries());
+  const selectedServices = new FormData(form).getAll("services");
   const selectedStaff = staff.find((person) => person.id === formData.staffId);
   const nameParts = formData.customerName.trim().split(/\s+/).filter(Boolean);
   const status = form.querySelector("#staff-edit-status");
@@ -2320,8 +2539,9 @@ calendarBoard?.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         customerName: formData.customerName.trim(),
         firstName: nameParts[0] || "",
-        lastName: nameParts.at(-1) || "",
-        service: formData.service.trim(),
+        lastName: nameParts.length > 1 ? nameParts.at(-1) : "",
+        services: selectedServices,
+        service: selectedServices[0] || "",
         staffId: formData.staffId,
         staffName: selectedStaff?.name || formData.staffId,
         date: formData.date,
@@ -2418,7 +2638,7 @@ document.addEventListener("input", (event) => {
     resetStaffBookingBypass(form);
     const menu = form?.querySelector("#staff-booking-service-options");
     if (menu) {
-      menu.innerHTML = staffBookingServiceOptions(serviceSearch.value);
+      menu.innerHTML = staffBookingServiceOptions(serviceSearch.value, staffSelectedServices(form));
       menu.classList.add("is-open");
       serviceSearch.setAttribute("aria-expanded", "true");
     }
@@ -2451,9 +2671,10 @@ document.addEventListener("input", (event) => {
 document.addEventListener("focusin", (event) => {
   const serviceSearch = event.target.closest("#staff-booking-service");
   if (serviceSearch) {
-    const menu = serviceSearch.closest("#staff-booking-form")?.querySelector("#staff-booking-service-options");
+    const form = serviceSearch.closest("#staff-booking-form");
+    const menu = form?.querySelector("#staff-booking-service-options");
     if (menu) {
-      menu.innerHTML = staffBookingServiceOptions();
+      menu.innerHTML = staffBookingServiceOptions("", staffSelectedServices(form));
       menu.classList.add("is-open");
       serviceSearch.setAttribute("aria-expanded", "true");
     }
@@ -2512,6 +2733,15 @@ document.addEventListener("submit", async (event) => {
   const isBypassSubmit = form.dataset.bypassConstraints === "true";
   data.phone = phoneDigits(data.phone);
   data.bypassConstraints = isBypassSubmit;
+  data.services = staffSelectedServices(form);
+  data.service = data.services[0] || "";
+
+  if (!data.services.length) {
+    status.textContent = "Choose at least one service.";
+    status.dataset.type = "error";
+    form.querySelector("#staff-booking-service")?.focus();
+    return;
+  }
 
   if (!staff.some((person) => person.id === data.staffId)) {
     status.textContent = "Choose a nail tech from the matching list.";
@@ -2588,10 +2818,38 @@ document.addEventListener("click", async (event) => {
     const menu = form?.querySelector("#staff-booking-service-options");
     if (input && menu) {
       resetStaffBookingBypass(form);
-      input.value = selectedService.dataset.staffBookingService;
+      addStaffSelectedService(form, selectedService.dataset.staffBookingService);
+      input.value = "";
       input.setAttribute("aria-expanded", "false");
       menu.classList.remove("is-open");
       updateStaffBookingClosingLimit(form);
+    }
+    return;
+  }
+
+  const removeStaffService = event.target.closest("[data-remove-staff-service]");
+  if (removeStaffService) {
+    const form = removeStaffService.closest("#staff-booking-form");
+    const selectedServices = staffSelectedServices(form)
+      .filter((service) => service !== removeStaffService.dataset.removeStaffService);
+    resetStaffBookingBypass(form);
+    renderStaffSelectedServices(form, selectedServices);
+    renderStaffBookingSearchMenus(form);
+    updateStaffBookingClosingLimit(form);
+    return;
+  }
+
+  const addStaffService = event.target.closest("[data-add-staff-service]");
+  if (addStaffService) {
+    const form = addStaffService.closest("#staff-booking-form");
+    const input = form?.querySelector("#staff-booking-service");
+    const menu = form?.querySelector("#staff-booking-service-options");
+    if (input && menu) {
+      input.value = "";
+      menu.innerHTML = staffBookingServiceOptions("", staffSelectedServices(form));
+      menu.classList.add("is-open");
+      input.setAttribute("aria-expanded", "true");
+      input.focus();
     }
     return;
   }
@@ -2623,7 +2881,7 @@ document.addEventListener("click", async (event) => {
     managePeopleButton.setAttribute("aria-expanded", "false");
   }
 
-  if (!event.target.closest(".staff-booking-search-select")) {
+  if (!event.target.closest(".staff-booking-search-select, [data-add-staff-service], #staff-booking-selected-services")) {
     document.querySelectorAll(".staff-booking-search-select .search-select-menu").forEach((menu) => menu.classList.remove("is-open"));
     document.querySelectorAll(".staff-booking-search-select [role='combobox']").forEach((input) => input.setAttribute("aria-expanded", "false"));
   }
@@ -2776,7 +3034,7 @@ async function savePeopleForm(form) {
   const isService = form.getAttribute("id") === "service-record-form";
   const birthday = isEmployee || isService ? { value: "", valid: true } : normalizeBirthdayInput(data.birthday);
   if (!birthday.valid) {
-    status.textContent = "Enter date of birth as MM/DD/YYYY.";
+    status.textContent = "Enter birthday as MM/DD.";
     return;
   }
   const id = data.id;
@@ -2834,7 +3092,8 @@ async function savePeopleForm(form) {
       if (hadDraft) {
         scheduleDraft = {
           weekly: { ...scheduleData.weekly, ...previousDraft.weekly },
-          overrides: { ...scheduleData.overrides, ...previousDraft.overrides }
+          overrides: { ...scheduleData.overrides, ...previousDraft.overrides },
+          closures: { ...scheduleData.closures, ...previousDraft.closures }
         };
         scheduleDraftOverrides = previousDraftOverrides;
       } else {

@@ -3,6 +3,10 @@ const menuToggle = document.querySelector(".menu-toggle");
 const menuToggleLabel = menuToggle?.querySelector(".sr-only");
 const navLinks = document.querySelector(".nav-links");
 const publicServiceMenu = document.querySelector(".service-menu");
+const betaNotice = document.querySelector("#site-beta-notice");
+const betaNoticeClose = document.querySelector("#close-beta-notice");
+const betaNoticeContinue = document.querySelector("#continue-beta-notice");
+const betaNoticeSessionKey = "dior-nails-beta-notice-seen-v1";
 const landingGaps = {
   top: 0,
   gallery: 40,
@@ -64,6 +68,29 @@ function setMenuOpen(isOpen) {
   navLinks?.classList.toggle("is-open", isOpen);
 }
 
+function closeBetaNotice() {
+  if (!betaNotice) return;
+  betaNotice.classList.add("is-hidden");
+  try {
+    sessionStorage.setItem(betaNoticeSessionKey, "true");
+  } catch {
+    // The notice can still be dismissed when browser storage is unavailable.
+  }
+}
+
+function openBetaNotice() {
+  if (!betaNotice) return;
+  let alreadySeen = false;
+  try {
+    alreadySeen = sessionStorage.getItem(betaNoticeSessionKey) === "true";
+  } catch {
+    alreadySeen = false;
+  }
+  if (alreadySeen) return;
+  betaNotice.classList.remove("is-hidden");
+  betaNoticeContinue?.focus();
+}
+
 function scrollToSection(id, behavior = "smooth") {
   const target = id ? document.getElementById(id) : null;
 
@@ -107,6 +134,15 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     setMenuOpen(false);
+    closeBetaNotice();
+  }
+});
+
+betaNoticeClose?.addEventListener("click", closeBetaNotice);
+betaNoticeContinue?.addEventListener("click", closeBetaNotice);
+betaNotice?.addEventListener("click", (event) => {
+  if (event.target === betaNotice) {
+    closeBetaNotice();
   }
 });
 
@@ -118,6 +154,7 @@ window.addEventListener("resize", () => {
 
 window.addEventListener("load", () => {
   renderPublicServices();
+  openBetaNotice();
   const id = window.location.hash.slice(1);
 
   if (id) {

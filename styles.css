@@ -44,6 +44,10 @@ body {
     var(--white);
 }
 
+body:has(.cancel-modal:not(.is-hidden)) {
+  overflow: hidden;
+}
+
 img,
 svg,
 video,
@@ -874,6 +878,69 @@ input[list] {
   font-size: 0.9rem;
 }
 
+.selected-services {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.selected-services:empty {
+  display: none;
+}
+
+.selected-service-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: var(--blush);
+}
+
+.selected-service-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #332c2d;
+  font: 750 0.86rem/1.3 Inter, system-ui, sans-serif;
+}
+
+.selected-service-item small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.selected-service-remove {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(127, 29, 29, 0.2);
+  border-radius: 50%;
+  color: #7f1d1d;
+  background: var(--white);
+  cursor: pointer;
+  font: 900 1rem/1 Inter, system-ui, sans-serif;
+}
+
+.add-service-button {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0.55rem;
+  padding: 0.45rem 0;
+  border: 0;
+  color: var(--red);
+  background: transparent;
+  cursor: pointer;
+  font: 850 0.86rem/1.2 Inter, system-ui, sans-serif;
+  text-align: left;
+}
+
+.add-service-button:hover,
+.add-service-button:focus-visible {
+  text-decoration: underline;
+}
+
 input[type="date"] {
   position: relative;
   display: block;
@@ -1169,7 +1236,7 @@ textarea:focus {
 
 .birthday-grid {
   display: grid;
-  grid-template-columns: minmax(7.5rem, 1.25fr) minmax(4.8rem, 0.65fr) minmax(5.8rem, 0.8fr);
+  grid-template-columns: minmax(7.5rem, 1.25fr) minmax(4.8rem, 0.75fr);
   gap: 0.55rem;
   min-width: 0;
   max-width: 100%;
@@ -1361,9 +1428,25 @@ textarea:focus {
 
 .checkin-phone-form,
 .checkin-profile-form,
-.checkin-birthday-form {
+.checkin-birthday-form,
+.checkin-sms-prompt {
   display: grid;
   gap: 1rem;
+}
+
+.checkin-page.is-profile-active .checkin-intro,
+.checkin-page.is-sms-prompt-active .checkin-intro {
+  display: none;
+}
+
+.checkin-page.is-profile-active .checkin-card,
+.checkin-page.is-sms-prompt-active .checkin-card {
+  width: min(68rem, 100%);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.checkin-page.is-profile-active .checkin-profile-form {
+  width: 100%;
 }
 
 .checkin-phone-form label,
@@ -1452,6 +1535,38 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
+}
+
+.checkin-sms-prompt {
+  justify-self: center;
+  width: min(38rem, 100%);
+  padding: clamp(1.1rem, 3vw, 2rem);
+  border: 1px solid rgba(201, 150, 85, 0.4);
+  border-radius: 0.5rem;
+  background: #fffaf8;
+  box-shadow: 0 18px 50px rgba(93, 45, 38, 0.14);
+}
+
+.checkin-sms-icon {
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  color: var(--white);
+  background: var(--red);
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.checkin-sms-legal {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  text-align: center;
 }
 
 .checkin-result {
@@ -1749,6 +1864,45 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 0.7rem;
+}
+
+.site-beta-notice {
+  z-index: 90;
+  background: rgba(33, 25, 26, 0.55);
+}
+
+.site-beta-notice-card {
+  position: relative;
+  width: min(34rem, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border-top: 0.3rem solid var(--gold);
+  text-align: left;
+}
+
+.site-beta-notice-card > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--red);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.site-beta-notice-card .detail-close-button {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+.site-beta-notice-card h2 {
+  padding-right: 2.5rem;
+}
+
+.site-beta-notice-card .button {
+  width: 100%;
+  margin-top: 0.35rem;
 }
 
 .staff-booking-modal {
@@ -2475,6 +2629,12 @@ textarea:focus {
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
   padding: 1.35rem;
+  opacity: 1;
+  pointer-events: auto;
+  isolation: isolate;
+  background: #ffffff;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: 0 28px 80px rgba(49, 31, 29, 0.34);
 }
 
@@ -2526,6 +2686,54 @@ body.calendar-maximized .cancel-modal {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
+}
+
+.calendar-heading-date-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 0.12rem;
+  min-width: min(24rem, 42vw);
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.calendar-heading-date-input {
+  position: absolute !important;
+  inset: 0;
+  z-index: 2;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.calendar-heading-date-button strong {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.calendar-heading-date-button small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.calendar-heading-date-button:hover,
+.calendar-heading-date-button:focus-visible,
+.calendar-heading-date-button:has(.calendar-heading-date-input:focus-visible) {
+  color: var(--red);
+  background: var(--blush);
+  outline: 1px solid rgba(185, 137, 67, 0.45);
 }
 
 .calendar-navigation-button {
@@ -3473,6 +3681,74 @@ body.calendar-maximized .cancel-modal {
   font-size: 1.5rem;
 }
 
+.manager-closure-panel {
+  grid-template-columns: minmax(12rem, 0.75fr) minmax(20rem, 1.4fr);
+  align-items: start;
+}
+
+.manager-closure-form {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.75fr) minmax(12rem, 1.25fr) auto;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.manager-closure-form label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.manager-closure-form label span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.manager-closure-list {
+  grid-column: 2;
+  display: grid;
+  gap: 0.4rem;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+
+.manager-closure-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(230, 207, 191, 0.9);
+  border-left: 0.22rem solid var(--red);
+  border-radius: 0.3rem;
+  background: #fffafa;
+}
+
+.manager-closure-item > div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.manager-closure-item strong,
+.manager-closure-item span {
+  overflow-wrap: anywhere;
+}
+
+.manager-closure-item span,
+.manager-closure-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.manager-closure-empty {
+  margin: 0;
+}
+
 .manager-table {
   display: grid;
   gap: var(--space-control);
@@ -3680,6 +3956,78 @@ body.calendar-maximized .cancel-modal {
   background: rgba(255, 250, 248, 0.72);
 }
 
+.week-override-cell-closed {
+  place-content: center;
+  text-align: center;
+  color: #7f1d1d;
+  background: #f5eeee;
+}
+
+.week-override-cell-closed strong {
+  justify-content: center;
+  color: #7f1d1d;
+}
+
+.week-override-cell-closed span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.schedule-heading-closed,
+.schedule-column-closed {
+  background: #f3eeee;
+}
+
+.schedule-heading-closed {
+  color: #7f1d1d;
+}
+
+.schedule-off-message small {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.salon-closure-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(127, 29, 29, 0.2);
+  border-left: 0.25rem solid #b91c1c;
+  border-radius: 0.3rem;
+  color: #7f1d1d;
+  background: #fff5f5;
+}
+
+.salon-closure-banner span {
+  color: #5f5353;
+  overflow-wrap: anywhere;
+}
+
+.month-cell-closed {
+  background: #f5eeee;
+}
+
+.salon-closed-label {
+  display: grid;
+  gap: 0.15rem;
+  color: #7f1d1d !important;
+  background: #fff5f5 !important;
+  border-left-color: #b91c1c !important;
+  font-weight: 900;
+}
+
+.salon-closed-label small {
+  color: var(--muted);
+  font-size: 0.65rem;
+  overflow-wrap: anywhere;
+}
+
 .week-override-cell label {
   min-height: 2.4rem;
   padding-inline: 0.55rem;
@@ -3864,6 +4212,16 @@ body.calendar-maximized .cancel-modal {
 
   .nav-links a:last-child {
     border-bottom: 0;
+  }
+
+  .staff-portal-side-tab {
+    position: static;
+    width: max-content;
+    margin: 1rem 0 0 auto;
+    border-right: 1px solid rgba(201, 150, 85, 0.42);
+    border-radius: 0.35rem;
+    writing-mode: horizontal-tb;
+    transform: none;
   }
 
   .hero {
@@ -4188,7 +4546,7 @@ body.calendar-maximized .cancel-modal {
   }
 
   .birthday-grid label:first-child {
-    grid-column: 1 / -1;
+    grid-column: auto;
   }
 
   .booking-hero h1,
@@ -4381,10 +4739,16 @@ body.calendar-maximized .cancel-modal {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .calendar-heading-title h2 {
+  .calendar-heading-title h2,
+  .calendar-heading-date-button {
     grid-column: 1 / -1;
     grid-row: 1;
     text-align: center;
+  }
+
+  .calendar-heading-date-button {
+    width: 100%;
+    min-width: 0;
   }
 
   .calendar-heading-title .calendar-navigation-button:first-child {
@@ -4473,6 +4837,19 @@ body.calendar-maximized .cancel-modal {
   }
 
   .manager-actions .button {
+    width: 100%;
+  }
+
+  .manager-closure-panel,
+  .manager-closure-form {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-closure-list {
+    grid-column: 1;
+  }
+
+  .manager-closure-form .button {
     width: 100%;
   }
 
@@ -4751,23 +5128,32 @@ body.calendar-maximized .cancel-modal {
 
 @media (max-width: 420px) {
   .site-header {
-    gap: 0.45rem;
+    gap: 0.35rem;
     padding-inline: 3.5vw;
   }
 
   .brand {
-    font-size: 1.45rem;
+    font-size: 1.28rem;
   }
 
   .site-header > .button {
-    min-height: 2.35rem;
-    padding-inline: 0.55rem;
-    font-size: 0.8rem;
+    min-height: 2.25rem;
+    padding-inline: 0.42rem;
+    font-size: 0.72rem;
+    white-space: nowrap;
   }
 
   .site-header .menu-toggle {
-    width: 2.4rem;
-    height: 2.4rem;
+    width: 2.3rem;
+    height: 2.3rem;
+  }
+
+  .checkin-header .brand {
+    font-size: 1.28rem;
+  }
+
+  .checkin-phone-form input[type="tel"] {
+    font-size: 1.35rem;
   }
 
   .booking-app-shell,
@@ -4791,6 +5177,22 @@ body.calendar-maximized .cancel-modal {
 
   .people-list-tools {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 340px) {
+  .site-header {
+    gap: 0.25rem;
+  }
+
+  .brand,
+  .checkin-header .brand {
+    font-size: 1.15rem;
+  }
+
+  .site-header > .button {
+    padding-inline: 0.3rem;
+    font-size: 0.66rem;
   }
 }
 
@@ -4844,6 +5246,36 @@ body.calendar-maximized .cancel-modal {
     align-items: center;
     gap: clamp(0.85rem, 2vw, 1.5rem);
     padding: clamp(0.85rem, 2vw, 1.35rem);
+  }
+
+  .checkin-page.is-profile-active .checkin-shell,
+  .checkin-page.is-sms-prompt-active .checkin-shell {
+    align-items: start;
+    min-height: calc(100dvh - 4.5rem);
+    overflow: visible;
+  }
+
+  .checkin-page.is-profile-active .checkin-card,
+  .checkin-page.is-sms-prompt-active .checkin-card {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(70rem, 100%);
+    align-items: start;
+  }
+
+  .checkin-page.is-profile-active .checkin-profile-form {
+    width: 100%;
+  }
+
+  .checkin-page.is-profile-active .checkin-profile-form .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .checkin-page.is-profile-active .checkin-profile-form .birthday-fieldset {
+    min-width: 0;
+  }
+
+  .checkin-page.is-profile-active .checkin-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .checkin-intro {
@@ -5008,6 +5440,16 @@ body.calendar-maximized .cancel-modal {
     grid-template-columns: minmax(14rem, 0.95fr) minmax(18rem, 1.1fr);
     gap: 0.55rem;
     padding: 0.65rem;
+  }
+
+  .checkin-page.is-profile-active .checkin-card,
+  .checkin-page.is-sms-prompt-active .checkin-card {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(68rem, 100%);
+  }
+
+  .checkin-page.is-profile-active .checkin-profile-form .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .checkin-intro {

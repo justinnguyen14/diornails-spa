@@ -8,11 +8,11 @@
       name="description"
       content="Book a Dior Nails & Spa appointment online with your preferred nail tech or any available tech."
     />
-    <link rel="stylesheet" href="styles.css?v=62" />
+    <link rel="stylesheet" href="styles.css?v=68" />
   </head>
   <body class="app-page">
     <header class="site-header" aria-label="Booking navigation">
-      <a class="brand" href="index.html" aria-label="Dior Nails home">
+      <a class="brand" href="/" aria-label="Dior Nails home">
         <span>Dior</span><strong>Nails</strong>
       </a>
       <button class="menu-toggle" type="button" aria-controls="booking-menu" aria-expanded="false">
@@ -20,7 +20,7 @@
         <span class="sr-only">Open menu</span>
       </button>
       <nav class="nav-links app-nav-links" id="booking-menu" aria-label="Booking menu">
-        <a href="index.html#services">Services</a>
+        <a href="/#services">Services</a>
       </nav>
       <a class="button button-small" href="tel:+18622583070">Call Salon</a>
     </header>
@@ -30,8 +30,8 @@
         <div>
           <h1 id="booking-page-title">Book your appointment</h1>
           <p>
-            Choose your service, preferred nail tech, and arrival time. Appointments reserve the correct
-            amount of time for the selected service.
+            Choose your services, preferred nail tech, and arrival time. Appointments reserve the correct
+            combined amount of time.
           </p>
         </div>
         <div class="booking-hero-panel" aria-label="Salon hours">
@@ -51,8 +51,8 @@
                 <input name="firstName" autocomplete="given-name" required />
               </label>
               <label>
-                <span>Last name</span>
-                <input name="lastName" autocomplete="family-name" required />
+                <span>Last name (optional)</span>
+                <input name="lastName" autocomplete="family-name" />
               </label>
               <label>
                 <span>Email (optional)</span>
@@ -90,20 +90,21 @@
           <div class="form-section">
             <h2>Appointment details</h2>
             <label>
-              <span>Service</span>
+              <span>Services</span>
               <div class="search-select" id="service-search">
                 <input
-                  name="service"
                   id="service-input"
                   autocomplete="off"
                   placeholder="Choose or search service"
                   role="combobox"
                   aria-controls="service-options"
                   aria-expanded="false"
-                  required
                 />
                 <div class="search-select-menu" id="service-options" role="listbox"></div>
               </div>
+              <input name="service" id="primary-service" type="hidden" required />
+              <div class="selected-services" id="selected-services" aria-live="polite"></div>
+              <button class="add-service-button" id="add-service-button" type="button" hidden>Add additional service</button>
             </label>
             <div class="form-grid">
               <label>
@@ -149,7 +150,7 @@
           <h2>Reservation summary</h2>
           <dl>
             <div>
-              <dt>Service</dt>
+              <dt>Services</dt>
               <dd id="summary-service">Choose a service</dd>
             </div>
             <div>
@@ -176,27 +177,21 @@
         <h2>Appointment confirmed</h2>
         <p id="confirmation-copy"></p>
         <div class="booking-actions">
-          <a class="button" href="booking.html">Book Another</a>
-          <a class="button button-secondary" href="index.html">Back to Website</a>
+          <a class="button" href="/booking">Book Another</a>
+          <a class="button button-secondary" href="/">Back to Website</a>
         </div>
       </section>
 
       <section class="manage-booking" aria-labelledby="manage-booking-title">
         <div class="manage-booking-heading">
           <h2 id="manage-booking-title">Manage appointment</h2>
-          <p>Look up your appointment using the first name, last name, and phone number used when booking.</p>
+          <p>Look up your appointment using the first name and phone number used when booking.</p>
         </div>
         <form class="manage-booking-form" id="manage-booking-form">
-          <div class="form-grid manage-name-grid">
-            <label>
-              <span>First name</span>
-              <input name="lookupFirstName" autocomplete="given-name" required />
-            </label>
-            <label>
-              <span>Last name</span>
-              <input name="lookupLastName" autocomplete="family-name" required />
-            </label>
-          </div>
+          <label>
+            <span>First name</span>
+            <input name="lookupFirstName" autocomplete="given-name" required />
+          </label>
           <label>
             <span>Phone number</span>
             <input
@@ -227,7 +222,7 @@
         </div>
       </div>
 
-      <a class="staff-portal-side-tab" href="staff.html" aria-label="Staff Portal">Staff Portal</a>
+      <a class="staff-portal-side-tab" href="/staff" aria-label="Staff Portal">Staff Portal</a>
     </main>
 
     <footer class="app-footer">
@@ -236,6 +231,6 @@
     </footer>
 
     <script src="script.js?v=4"></script>
-    <script src="booking.js?v=26"></script>
+    <script src="booking.js?v=29"></script>
   </body>
 </html>

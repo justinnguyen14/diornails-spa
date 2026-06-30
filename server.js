@@ -415,6 +415,120 @@ function writeCustomers(customers) {
   fs.writeFileSync(CUSTOMERS_FILE, `${JSON.stringify(customers, null, 2)}\n`);
 }
 
+function normalizeBirthdayMonthDay(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+
+  const isoMatch = trimmed.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  const storedMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})$/);
+  const displayMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})(?:\/\d{4})?$/);
+  const match = isoMatch || storedMatch || displayMatch;
+  if (!match) return "";
+
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const date = new Date(2000, month - 1, day);
+  const valid = Number.isInteger(month)
+    && Number.isInteger(day)
+    && date.getMonth() === month - 1
+    && date.getDate() === day;
+
+  return valid ? `${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
+}
+
+function normalizeStoredCustomerBirthdays() {
+  const customers = readCustomers();
+  let changed = false;
+  const normalized = customers.map((customer) => {
+    const birthday = normalizeBirthdayMonthDay(customer.birthday);
+    if (birthday !== String(customer.birthday || "").trim()) changed = true;
+    return { ...customer, birthday };
+  });
+  if (changed) writeCustomers(normalized);
+  return normalized;
+}
+
+function customerIdentityKey(customer) {
+  const digits = phoneDigits(customer.phone);
+  const firstName = normalizeName(customer.firstName);
+  return digits.length === 10 && firstName ? `${digits}:${firstName}` : "";
+}
+
+function mergeCustomerRecords(primary, duplicate) {
+  const firstName = String(primary.firstName || duplicate.firstName || "").trim();
+  const lastName = String(primary.lastName || duplicate.lastName || "").trim();
+  const smsConsent = Boolean(primary.smsConsent || duplicate.smsConsent);
+
+  return {
+    ...duplicate,
+    ...primary,
+    id: primary.id || duplicate.id,
+    firstName,
+    lastName,
+    customerName: `${firstName} ${lastName}`.trim(),
+    phone: displayPhone(primary.phone || duplicate.phone),
+    email: String(primary.email || duplicate.email || "").trim().toLowerCase(),
+    birthday: normalizeBirthdayMonthDay(primary.birthday || duplicate.birthday),
+    smsConsent,
+    smsConsentAt: smsConsent
+      ? String(primary.smsConsentAt || duplicate.smsConsentAt || new Date().toISOString())
+      : "",
+    checkInCount: Math.max(Number(primary.checkInCount || 0), Number(duplicate.checkInCount || 0)),
+    lastCheckInDate: [primary.lastCheckInDate, duplicate.lastCheckInDate].filter(Boolean).sort().at(-1) || "",
+    createdAt: [primary.createdAt, duplicate.createdAt].filter(Boolean).sort()[0] || new Date().toISOString(),
+    updatedAt: [primary.updatedAt, duplicate.updatedAt].filter(Boolean).sort().at(-1) || new Date().toISOString()
+  };
+}
+
+function consolidateCustomerDatabase() {
+  const customers = readCustomers();
+  const consolidated = [];
+  const indexByKey = new Map();
+  const replacementIds = new Map();
+
+  customers.forEach((customer) => {
+    const key = customerIdentityKey(customer);
+    if (!key || !indexByKey.has(key)) {
+      if (key) indexByKey.set(key, consolidated.length);
+      consolidated.push(customer);
+      return;
+    }
+
+    const index = indexByKey.get(key);
+    const primary = consolidated[index];
+    consolidated[index] = mergeCustomerRecords(primary, customer);
+    if (customer.id && primary.id && customer.id !== primary.id) {
+      replacementIds.set(customer.id, primary.id);
+    }
+  });
+
+  if (consolidated.length !== customers.length) {
+    writeCustomers(consolidated);
+
+    const bookings = readBookings();
+    let bookingsChanged = false;
+    bookings.forEach((booking) => {
+      if (replacementIds.has(booking.customerId)) {
+        booking.customerId = replacementIds.get(booking.customerId);
+        bookingsChanged = true;
+      }
+    });
+    if (bookingsChanged) writeBookings(bookings);
+
+    const checkins = readCheckins();
+    let checkinsChanged = false;
+    checkins.forEach((checkin) => {
+      if (replacementIds.has(checkin.customerId)) {
+        checkin.customerId = replacementIds.get(checkin.customerId);
+        checkinsChanged = true;
+      }
+    });
+    if (checkinsChanged) writeCheckins(checkins);
+  }
+
+  return consolidated;
+}
+
 function readCheckins() {
   ensureStore();
   return JSON.parse(fs.readFileSync(CHECKINS_FILE, "utf8"));
@@ -431,29 +545,28 @@ function upsertCustomer(input) {
   const phone = displayPhone(input.phone);
   const digits = phoneDigits(phone);
 
-  if (!firstName || !lastName || digits.length !== 10) {
+  if (!firstName || digits.length !== 10) {
     return null;
   }
 
-  const customers = readCustomers();
+  const customers = consolidateCustomerDatabase();
   const index = customers.findIndex((customer) => (
     phoneDigits(customer.phone) === digits &&
-    normalizeName(customer.firstName) === normalizeName(firstName) &&
-    normalizeName(customer.lastName) === normalizeName(lastName)
+    normalizeName(customer.firstName) === normalizeName(firstName)
   ));
   const existing = index >= 0 ? customers[index] : {};
+  const resolvedFirstName = String(existing.firstName || firstName).trim();
+  const resolvedLastName = lastName || existing.lastName || "";
   const hasSmsConsent = Object.prototype.hasOwnProperty.call(input, "smsConsent");
-  const smsConsent = hasSmsConsent ? booleanValue(input.smsConsent) : Boolean(existing.smsConsent);
+  const smsConsent = Boolean(existing.smsConsent || (hasSmsConsent && booleanValue(input.smsConsent)));
   const customer = {
     id: existing.id || `cus_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    firstName,
-    lastName,
-    customerName: `${firstName} ${lastName}`.trim(),
+    firstName: resolvedFirstName,
+    lastName: resolvedLastName,
+    customerName: `${resolvedFirstName} ${resolvedLastName}`.trim(),
     phone,
     email: String(input.email || existing.email || "").trim().toLowerCase(),
-    birthday: Object.prototype.hasOwnProperty.call(input, "birthday")
-      ? String(input.birthday || "").trim()
-      : String(existing.birthday || "").trim(),
+    birthday: normalizeBirthdayMonthDay(input.birthday) || normalizeBirthdayMonthDay(existing.birthday),
     smsConsent,
     smsConsentAt: smsConsent ? existing.smsConsentAt || new Date().toISOString() : "",
     createdAt: existing.createdAt || new Date().toISOString(),
@@ -478,7 +591,7 @@ function customerPublicProfile(customer) {
     customerName: customer.customerName || `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
     phone: customer.phone || "",
     email: customer.email || "",
-    birthday: customer.birthday || "",
+    birthday: normalizeBirthdayMonthDay(customer.birthday),
     smsConsent: Boolean(customer.smsConsent),
     checkInCount: Number(customer.checkInCount || 0),
     lastCheckInDate: customer.lastCheckInDate || ""
@@ -605,16 +718,26 @@ function updateCustomerProfile(customerId, input) {
 
   customers[index] = {
     ...customers[index],
-    email: String(input.email || customers[index].email || "").trim().toLowerCase(),
+    firstName: String(input.firstName || customers[index].firstName || "").trim(),
+    lastName: Object.prototype.hasOwnProperty.call(input, "lastName")
+      ? String(input.lastName || "").trim()
+      : String(customers[index].lastName || "").trim(),
+    email: Object.prototype.hasOwnProperty.call(input, "email")
+      ? String(input.email || "").trim().toLowerCase()
+      : String(customers[index].email || "").trim().toLowerCase(),
     birthday: Object.prototype.hasOwnProperty.call(input, "birthday")
-      ? String(input.birthday || "").trim()
-      : String(customers[index].birthday || "").trim(),
+      ? normalizeBirthdayMonthDay(input.birthday)
+      : normalizeBirthdayMonthDay(customers[index].birthday),
     smsConsent,
     smsConsentAt: smsConsent ? customers[index].smsConsentAt || new Date().toISOString() : "",
     updatedAt: new Date().toISOString()
   };
+  customers[index].customerName = `${customers[index].firstName} ${customers[index].lastName}`.trim();
   writeCustomers(customers);
-  return customers[index];
+  const identityKey = customerIdentityKey(customers[index]);
+  return consolidateCustomerDatabase().find((customer) => (
+    customer.id === customerId || (identityKey && customerIdentityKey(customer) === identityKey)
+  )) || customers[index];
 }
 
 function findCustomerByIdAndPhone(customerId, phone) {
@@ -638,17 +761,27 @@ function syncCustomersFromBookings() {
     const digits = phoneDigits(booking.phone);
     const parts = bookingNameParts(booking);
 
-    if (!parts.firstName || !parts.lastName || digits.length !== 10) {
+    if (!parts.firstName || digits.length !== 10) {
       return;
     }
 
     const index = customers.findIndex((customer) => (
       phoneDigits(customer.phone) === digits &&
-      normalizeName(customer.firstName) === parts.firstName &&
-      normalizeName(customer.lastName) === parts.lastName
+      normalizeName(customer.firstName) === parts.firstName
     ));
 
     if (index >= 0) {
+      customers[index] = mergeCustomerRecords(customers[index], {
+        firstName: booking.firstName || String(booking.customerName || "").trim().split(/\s+/)[0],
+        lastName: booking.lastName || (parts.lastName !== parts.firstName ? String(booking.customerName || "").trim().split(/\s+/).at(-1) : ""),
+        phone: booking.phone,
+        email: booking.email,
+        smsConsent: booking.smsConsent,
+        smsConsentAt: booking.smsConsentAt,
+        createdAt: booking.createdAt,
+        updatedAt: booking.updatedAt || booking.createdAt
+      });
+      changed = true;
       return;
     }
 
@@ -675,7 +808,8 @@ function syncCustomersFromBookings() {
 function defaultSchedule() {
   return {
     weekly: Object.fromEntries(bookableStaff.map((person) => [person.id, person.workDays])),
-    overrides: {}
+    overrides: {},
+    closures: {}
   };
 }
 
@@ -692,6 +826,13 @@ function readSchedule() {
   });
 
   schedule.overrides = schedule.overrides || {};
+  schedule.closures = schedule.closures && typeof schedule.closures === "object"
+    ? Object.fromEntries(
+      Object.entries(schedule.closures)
+        .filter(([date]) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+        .map(([date, reason]) => [date, String(reason || "Salon closed").trim().slice(0, 120) || "Salon closed"])
+    )
+    : {};
   return schedule;
 }
 
@@ -713,6 +854,11 @@ function weeklyScheduleFor(schedule, person) {
 
 function isWeeklyStaffWorking(schedule, person, dateString) {
   return weeklyScheduleFor(schedule, person).includes(scheduleDay(dateString));
+}
+
+function salonClosure(schedule, dateString) {
+  const reason = schedule.closures?.[dateString];
+  return reason ? String(reason) : "";
 }
 
 function normalizeUnavailableRange(value = {}) {
@@ -937,7 +1083,11 @@ function addMinutes(value, minutesToAdd) {
 }
 
 function appointmentTimeRange(booking) {
-  const durationMinutes = Number(booking.durationMinutes || durationForService(booking.service));
+  const selectedServices = canonicalServiceNames(booking);
+  const durationMinutes = Number(
+    booking.durationMinutes ||
+    (selectedServices.length ? durationForServices(selectedServices) : durationForService(booking.service))
+  );
   return `${displayTime(booking.time)} - ${displayTime(addMinutes(booking.time, durationMinutes))}`;
 }
 
@@ -948,6 +1098,30 @@ function normalizeServiceName(value) {
 function canonicalServiceName(value) {
   const normalized = normalizeServiceName(value);
   return services.find((service) => normalizeServiceName(service) === normalized) || "";
+}
+
+function requestedServiceValues(input) {
+  const values = Array.isArray(input?.services) ? input.services : [input?.service];
+  return values.map((value) => String(value || "").trim()).filter(Boolean);
+}
+
+function canonicalServiceNames(input) {
+  const canonical = requestedServiceValues(input).map(canonicalServiceName);
+  if (!canonical.length || canonical.some((service) => !service)) {
+    return [];
+  }
+  return [...new Set(canonical)];
+}
+
+function serviceLabel(selectedServices) {
+  return selectedServices.join(" + ");
+}
+
+function durationForServices(selectedServices) {
+  return selectedServices.reduce(
+    (total, service) => total + Number(serviceDurations[service] || 60),
+    0
+  );
 }
 
 function durationForService(value) {
@@ -1017,7 +1191,12 @@ function isStaffAvailable(bookings, staffId, date, time, durationMinutes = 60, o
   const worker = bookableStaff.find((person) => person.id === staffId);
   const schedule = readSchedule();
 
-  if (isPastDate(date) || (!options.ignorePastSlot && isPastSlot(date, time)) || !appointmentFitsSalonHours(date, time, durationMinutes)) {
+  if (
+    salonClosure(schedule, date) ||
+    isPastDate(date) ||
+    (!options.ignorePastSlot && isPastSlot(date, time)) ||
+    !appointmentFitsSalonHours(date, time, durationMinutes)
+  ) {
     return false;
   }
 
@@ -1060,6 +1239,10 @@ function isStaffWorking(worker, dateString) {
 }
 
 function isStaffWorkingFromSchedule(worker, dateString, schedule) {
+  if (salonClosure(schedule, dateString)) {
+    return false;
+  }
+
   const override = schedule.overrides?.[dateString]?.[worker.id];
   const weeklyValue = isWeeklyStaffWorking(schedule, worker, dateString);
 
@@ -1091,8 +1274,9 @@ function assignStaff(bookings, requestedStaffId, date, time, durationMinutes, op
 function validateBooking(input, options = {}) {
   const staffMode = Boolean(options.staffMode);
   const bypassConstraints = staffMode && Boolean(options.bypassConstraints);
-  const required = ["firstName", "lastName", "phone", "service", "date", "time"];
+  const required = ["firstName", "phone", "date", "time"];
   const missing = required.filter((key) => !String(input[key] || "").trim());
+  const selectedServices = canonicalServiceNames(input);
 
   if (missing.length > 0) {
     return { error: `${missing.join(", ")} required.` };
@@ -1106,11 +1290,10 @@ function validateBooking(input, options = {}) {
     return { error: "Please enter a full 10 digit phone number." };
   }
 
-  const service = canonicalServiceName(input.service);
-
-  if (!service || !serviceDurations[service]) {
-    return { error: "Please choose a valid service." };
+  if (!selectedServices.length || selectedServices.length !== requestedServiceValues(input).length) {
+    return { error: "Please choose one or more valid services without duplicates." };
   }
+  const durationMinutes = durationForServices(selectedServices);
 
   if (input.staffId && input.staffId !== "any" && !bookableStaff.some((person) => person.id === input.staffId)) {
     return { error: "Please choose a valid nail tech." };
@@ -1120,9 +1303,14 @@ function validateBooking(input, options = {}) {
     return { error: "Please choose today or a future date." };
   }
 
-  if (!appointmentFitsSalonHours(input.date, input.time, serviceDurations[service]) && !bypassConstraints) {
+  const closureReason = salonClosure(readSchedule(), input.date);
+  if (closureReason) {
+    return { error: `The salon is closed on ${displayDate(input.date)}: ${closureReason}.` };
+  }
+
+  if (!appointmentFitsSalonHours(input.date, input.time, durationMinutes) && !bypassConstraints) {
     return {
-      error: `That service must finish by the salon closing time of ${displayTime(getHours(input.date).close)}.`,
+      error: `The selected services must finish by the salon closing time of ${displayTime(getHours(input.date).close)}.`,
       bypassable: staffMode && !bypassConstraints
     };
   }
@@ -1133,7 +1321,7 @@ function validateBooking(input, options = {}) {
   const closeMinutes = timeToMinutes(close);
   const validStartTime = bypassConstraints
     ? startMinutes >= openMinutes && startMinutes <= closeMinutes && (startMinutes - openMinutes) % 15 === 0
-    : slotsForDate(input.date, serviceDurations[service]).includes(input.time);
+    : slotsForDate(input.date, durationMinutes).includes(input.time);
 
   if (!validStartTime) {
     return { error: "Please choose a 15-minute appointment start time within salon hours." };
@@ -1267,24 +1455,32 @@ async function sendSmsNotification(booking, summary) {
   return sendSmsToPhone(booking.phone, `${summary} Reply STOP to opt out.`, "sms");
 }
 
+function staffRecordForNotification(staffId) {
+  return readAllStaffRecords().find((person) => person.id === staffId);
+}
+
+async function sendStaffNotification(staffId, body, channel = "staff_sms") {
+  const selectedStaff = staffRecordForNotification(staffId);
+  if (!selectedStaff) {
+    return { channel, ok: false, reason: "staff_not_found" };
+  }
+
+  if (phoneDigits(selectedStaff.phone).length !== 10) {
+    return { channel, ok: false, reason: "staff_phone_not_provided" };
+  }
+
+  return sendSmsToPhone(selectedStaff.phone, body, channel);
+}
+
 async function notifySelectedStaff(booking, requestedStaffId) {
   if (!requestedStaffId || requestedStaffId === "any") {
     return { channel: "staff_sms", ok: false, reason: "staff_not_specifically_requested" };
   }
 
-  const selectedStaff = bookableStaff.find((person) => person.id === booking.staffId);
-  if (!selectedStaff) {
-    return { channel: "staff_sms", ok: false, reason: "staff_not_found" };
-  }
-
-  if (phoneDigits(selectedStaff.phone).length !== 10) {
-    return { channel: "staff_sms", ok: false, reason: "staff_phone_not_provided" };
-  }
-
   const formattedDate = displayDate(booking.date);
   const timeRange = appointmentTimeRange(booking);
   const summary = `Dior Nails staff alert: ${booking.customerName} booked ${booking.service} with you on ${formattedDate} from ${timeRange}. Customer phone: ${booking.phone}.`;
-  return sendSmsToPhone(selectedStaff.phone, summary, "staff_sms");
+  return sendStaffNotification(booking.staffId, summary, "staff_sms");
 }
 
 async function notifyCustomer(booking) {
@@ -1337,6 +1533,44 @@ async function notifyCancellation(booking, cancelledBy = "the salon") {
   ]);
 }
 
+async function notifyStaffCancellation(booking, cancelledBy = "the salon") {
+  const formattedDate = displayDate(booking.date);
+  const timeRange = appointmentTimeRange(booking);
+  const summary = `Dior Nails staff cancellation: ${booking.customerName}'s ${booking.service} appointment on ${formattedDate} from ${timeRange} was cancelled by ${cancelledBy}. Customer phone: ${booking.phone}.`;
+  return sendStaffNotification(booking.staffId, summary, "staff_cancellation_sms");
+}
+
+async function notifyStaffBookingUpdate(previousBooking, updatedBooking) {
+  const formattedDate = displayDate(updatedBooking.date);
+  const timeRange = appointmentTimeRange(updatedBooking);
+  const notifications = [];
+
+  if (previousBooking.staffId !== updatedBooking.staffId) {
+    const removedSummary = `Dior Nails staff update: ${previousBooking.customerName}'s appointment on ${displayDate(previousBooking.date)} from ${appointmentTimeRange(previousBooking)} was reassigned to ${updatedBooking.staffName} and removed from your schedule.`;
+    notifications.push(await sendStaffNotification(
+      previousBooking.staffId,
+      removedSummary,
+      "staff_reassignment_sms"
+    ));
+
+    const assignedSummary = `Dior Nails staff update: ${updatedBooking.customerName}'s ${updatedBooking.service} appointment was assigned to you on ${formattedDate} from ${timeRange}. Customer phone: ${updatedBooking.phone}.`;
+    notifications.push(await sendStaffNotification(
+      updatedBooking.staffId,
+      assignedSummary,
+      "staff_update_sms"
+    ));
+    return notifications;
+  }
+
+  const summary = `Dior Nails staff update: ${updatedBooking.customerName}'s appointment has changed. New details: ${updatedBooking.service} on ${formattedDate} from ${timeRange}. Customer phone: ${updatedBooking.phone}.`;
+  notifications.push(await sendStaffNotification(
+    updatedBooking.staffId,
+    summary,
+    "staff_update_sms"
+  ));
+  return notifications;
+}
+
 function normalizeName(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -1356,12 +1590,11 @@ function bookingNameParts(booking) {
   };
 }
 
-function matchesCustomerIdentity(booking, phone, firstName, lastName) {
+function matchesCustomerIdentity(booking, phone, firstName) {
   const parts = bookingNameParts(booking);
   return (
     phoneDigits(booking.phone) === phoneDigits(phone) &&
-    parts.firstName === normalizeName(firstName) &&
-    parts.lastName === normalizeName(lastName)
+    parts.firstName === normalizeName(firstName)
   );
 }
 
@@ -1379,8 +1612,9 @@ async function createBooking(input, createdBy = "customer") {
   }
 
   const bookings = readBookings();
-  const service = canonicalServiceName(input.service);
-  const durationMinutes = durationForService(service);
+  const selectedServices = canonicalServiceNames(input);
+  const service = serviceLabel(selectedServices);
+  const durationMinutes = durationForServices(selectedServices);
   const minutesPast = currentMinutes() - timeToMinutes(input.time);
   const staffPastGrace = staffMode && input.date === localTodayIso() && isPastSlot(input.date, input.time) && minutesPast <= 15;
   const staffId = bypassConstraints && input.staffId && input.staffId !== "any"
@@ -1397,7 +1631,7 @@ async function createBooking(input, createdBy = "customer") {
 
   const staffName = bookableStaff.find((person) => person.id === staffId).name;
   const firstName = String(input.firstName).trim();
-  const lastName = String(input.lastName).trim();
+  const lastName = String(input.lastName || "").trim();
   const booking = {
     id: `apt_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     firstName,
@@ -1407,6 +1641,7 @@ async function createBooking(input, createdBy = "customer") {
     phone: displayPhone(input.phone),
     smsConsent: booleanValue(input.smsConsent),
     smsConsentAt: booleanValue(input.smsConsent) ? new Date().toISOString() : "",
+    services: selectedServices,
     service,
     staffId,
     staffName,
@@ -1539,6 +1774,14 @@ async function handleApi(req, res, pathname, searchParams) {
       });
     }
 
+    if (input.closures && typeof input.closures === "object") {
+      schedule.closures = Object.fromEntries(
+        Object.entries(input.closures)
+          .filter(([date]) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+          .map(([date, reason]) => [date, String(reason || "Salon closed").trim().slice(0, 120) || "Salon closed"])
+      );
+    }
+
     pruneScheduleOverrides(schedule, changedWeeklyDaysByStaff, explicitOverrideKeys);
     writeSchedule(schedule);
     sendJson(res, 200, { schedule });
@@ -1602,6 +1845,7 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
+    consolidateCustomerDatabase();
     const matches = findCustomersByPhone(input.phone);
     const appointments = todaysAppointmentsForPhone(input.phone);
 
@@ -1617,13 +1861,25 @@ async function handleApi(req, res, pathname, searchParams) {
 
     const customer = matches[0];
 
-    if (!String(customer.birthday || "").trim()) {
+    if (!String(customer.lastName || "").trim()) {
       sendJson(res, 200, {
-        needsBirthday: true,
+        needsProfile: true,
+        existingProfile: true,
         customer: customerPublicProfile(customer),
         phone: displayPhone(input.phone),
         appointments,
-        message: "Add your birthday to receive birthday-week gifts and discounts."
+        message: "Please review and complete your customer profile before checking in."
+      });
+      return;
+    }
+
+    if (!customer.smsConsent) {
+      sendJson(res, 200, {
+        needsSmsConsent: true,
+        customer: customerPublicProfile(customer),
+        phone: displayPhone(input.phone),
+        appointments,
+        message: "Would you like appointment alerts and salon updates by text?"
       });
       return;
     }
@@ -1661,7 +1917,7 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
-    const birthday = String(input.birthday || "").trim();
+    const birthday = normalizeBirthdayMonthDay(input.birthday);
     if (!booleanValue(input.skipBirthday) && !birthday) {
       sendJson(res, 400, { error: "Please add a birthday or choose skip for now." });
       return;
@@ -1709,27 +1965,52 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
-    let customer = upsertCustomer({
-      firstName,
-      lastName,
-      phone: input.phone,
-      email: input.email,
-      smsConsent: input.smsConsent
-    });
+    const customerId = String(input.customerId || "").trim();
+    let customer = customerId ? findCustomerByIdAndPhone(customerId, input.phone) : null;
+
+    if (customerId && !customer) {
+      sendJson(res, 404, { error: "Customer profile not found for this phone number." });
+      return;
+    }
+
+    if (customer) {
+      customer = updateCustomerProfile(customer.id, {
+        firstName,
+        lastName,
+        email: input.email,
+        birthday: input.birthday,
+        smsConsent: input.smsConsent
+      });
+    } else {
+      customer = upsertCustomer({
+        firstName,
+        lastName,
+        phone: input.phone,
+        email: input.email,
+        birthday: input.birthday,
+        smsConsent: input.smsConsent
+      });
+    }
 
     if (!customer) {
       sendJson(res, 400, { error: "Unable to save this customer profile." });
       return;
     }
 
-    customer = updateCustomerProfile(customer.id, {
-      email: input.email,
-      birthday: input.birthday,
-      smsConsent: input.smsConsent
-    }) || customer;
+    if (!customer.smsConsent) {
+      sendJson(res, customerId ? 200 : 201, {
+        needsProfile: false,
+        needsSmsConsent: true,
+        customer: customerPublicProfile(customer),
+        phone: customer.phone,
+        appointments: todaysAppointmentsForPhone(customer.phone),
+        message: "Your profile is saved. Would you like appointment alerts and salon updates by text?"
+      });
+      return;
+    }
 
-    const result = recordCheckinForCustomer(customer, "new-profile");
-    sendJson(res, 201, {
+    const result = recordCheckinForCustomer(customer, customerId ? "profile-completed" : "new-profile");
+    sendJson(res, customerId ? 200 : 201, {
       needsProfile: false,
       alreadyCheckedIn: result.alreadyCheckedIn,
       customer: customerPublicProfile({
@@ -1744,19 +2025,78 @@ async function handleApi(req, res, pathname, searchParams) {
     return;
   }
 
+  if (req.method === "POST" && pathname === "/api/checkins/sms-consent") {
+    const input = await readJson(req);
+    const customerId = String(input.customerId || "").trim();
+    const digits = phoneDigits(input.phone);
+
+    if (!customerId || digits.length !== 10) {
+      sendJson(res, 400, { error: "Customer and phone number are required." });
+      return;
+    }
+
+    let customer = findCustomerByIdAndPhone(customerId, input.phone);
+    if (!customer) {
+      sendJson(res, 404, { error: "Customer profile not found for this phone number." });
+      return;
+    }
+
+    const enableSms = booleanValue(input.enableSms);
+    if (enableSms) {
+      customer = updateCustomerProfile(customer.id, { smsConsent: true }) || customer;
+    }
+
+    const result = recordCheckinForCustomer(customer, enableSms ? "sms-enabled" : "sms-skipped");
+    sendJson(res, 200, {
+      needsSmsConsent: false,
+      alreadyCheckedIn: result.alreadyCheckedIn,
+      customer: customerPublicProfile({
+        ...customer,
+        checkInCount: result.points,
+        lastCheckInDate: localTodayIso()
+      }),
+      points: result.points,
+      appointments: result.appointments,
+      message: result.alreadyCheckedIn
+        ? "You are already checked in for today."
+        : enableSms
+          ? "Text notifications are enabled. Welcome back!"
+          : "Welcome back!"
+    });
+    return;
+  }
+
   if (req.method === "GET" && pathname === "/api/availability") {
     const date = searchParams.get("date");
     const staffId = searchParams.get("staffId") || "any";
-    const service = canonicalServiceName(searchParams.get("service") || "");
-    const durationMinutes = durationForService(service);
+    const requestedServices = searchParams.getAll("service");
+    const selectedServices = canonicalServiceNames({ services: requestedServices });
+    const durationMinutes = durationForServices(selectedServices);
 
     if (!date) {
       sendJson(res, 400, { error: "Date required." });
       return;
     }
+    if (!selectedServices.length || selectedServices.length !== requestedServices.length) {
+      sendJson(res, 400, { error: "Please choose one or more valid services without duplicates." });
+      return;
+    }
 
     const bookings = readBookings();
     const schedule = readSchedule();
+    const closureReason = salonClosure(schedule, date);
+    if (closureReason) {
+      sendJson(res, 200, {
+        date,
+        service: serviceLabel(selectedServices),
+        services: selectedServices,
+        durationMinutes,
+        closed: true,
+        closureReason,
+        slots: []
+      });
+      return;
+    }
     const slots = slotsForDate(date, durationMinutes).map((time) => {
       const workingStaff = bookableStaff.filter((person) => isStaffWorkingFromSchedule(person, date, schedule));
       const availableStaff = workingStaff.filter((person) => isStaffAvailable(bookings, person.id, date, time, durationMinutes));
@@ -1774,7 +2114,13 @@ async function handleApi(req, res, pathname, searchParams) {
       };
     });
 
-    sendJson(res, 200, { date, service, durationMinutes, slots });
+    sendJson(res, 200, {
+      date,
+      service: serviceLabel(selectedServices),
+      services: selectedServices,
+      durationMinutes,
+      slots
+    });
     return;
   }
 
@@ -1823,8 +2169,8 @@ async function handleApi(req, res, pathname, searchParams) {
     const firstName = String(input.firstName || "").trim();
     const lastName = String(input.lastName || "").trim();
 
-    if (!firstName || !lastName || phoneDigits(input.phone).length !== 10) {
-      sendJson(res, 400, { error: "First name, last name, and a full 10 digit phone number are required." });
+    if (!firstName || phoneDigits(input.phone).length !== 10) {
+      sendJson(res, 400, { error: "First name and a full 10 digit phone number are required." });
       return;
     }
 
@@ -1833,23 +2179,19 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
-    const customers = readCustomers();
-    const customer = {
-      id: `cus_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    const existing = readCustomers().find((customer) => (
+      phoneDigits(customer.phone) === phoneDigits(input.phone) &&
+      normalizeName(customer.firstName) === normalizeName(firstName)
+    ));
+    const customer = upsertCustomer({
       firstName,
       lastName,
-      customerName: `${firstName} ${lastName}`,
       phone: displayPhone(input.phone),
       email: String(input.email || "").trim().toLowerCase(),
-      birthday: String(input.birthday || "").trim(),
-      smsConsent: booleanValue(input.smsConsent),
-      smsConsentAt: booleanValue(input.smsConsent) ? new Date().toISOString() : "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    customers.push(customer);
-    writeCustomers(customers);
-    sendJson(res, 201, { customer });
+      birthday: normalizeBirthdayMonthDay(input.birthday),
+      smsConsent: booleanValue(input.smsConsent)
+    });
+    sendJson(res, existing ? 200 : 201, { customer });
     return;
   }
 
@@ -1870,8 +2212,8 @@ async function handleApi(req, res, pathname, searchParams) {
 
     const firstName = String(input.firstName || "").trim();
     const lastName = String(input.lastName || "").trim();
-    if (!firstName || !lastName || phoneDigits(input.phone).length !== 10) {
-      sendJson(res, 400, { error: "First name, last name, and a full 10 digit phone number are required." });
+    if (!firstName || phoneDigits(input.phone).length !== 10) {
+      sendJson(res, 400, { error: "First name and a full 10 digit phone number are required." });
       return;
     }
     if (String(input.email || "").trim() && !isValidEmail(input.email)) {
@@ -1884,16 +2226,21 @@ async function handleApi(req, res, pathname, searchParams) {
       ...customers[index],
       firstName,
       lastName,
-      customerName: `${firstName} ${lastName}`,
+      customerName: `${firstName} ${lastName}`.trim(),
       phone: displayPhone(input.phone),
       email: String(input.email || "").trim().toLowerCase(),
-      birthday: String(input.birthday || customers[index].birthday || "").trim(),
+      birthday: normalizeBirthdayMonthDay(input.birthday || customers[index].birthday),
       smsConsent,
       smsConsentAt: smsConsent ? customers[index].smsConsentAt || new Date().toISOString() : "",
       updatedAt: new Date().toISOString()
     };
     writeCustomers(customers);
-    sendJson(res, 200, { customer: customers[index] });
+    const identityKey = customerIdentityKey(customers[index]);
+    const consolidated = consolidateCustomerDatabase();
+    const customer = consolidated.find((record) => (
+      record.id === customerId || (identityKey && customerIdentityKey(record) === identityKey)
+    )) || customers[index];
+    sendJson(res, 200, { customer });
     return;
   }
 
@@ -2164,7 +2511,6 @@ async function handleApi(req, res, pathname, searchParams) {
   if (req.method === "GET" && pathname === "/api/customer-bookings") {
     const phone = searchParams.get("phone") || "";
     const firstName = searchParams.get("firstName") || "";
-    const lastName = searchParams.get("lastName") || "";
     const digits = phoneDigits(phone);
 
     if (digits.length !== 10) {
@@ -2172,13 +2518,13 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
-    if (!normalizeName(firstName) || !normalizeName(lastName)) {
-      sendJson(res, 400, { error: "Please enter the first and last name used for booking." });
+    if (!normalizeName(firstName)) {
+      sendJson(res, 400, { error: "Please enter the first name used for booking." });
       return;
     }
 
     const bookings = readBookings()
-      .filter((booking) => matchesCustomerIdentity(booking, phone, firstName, lastName) && booking.status !== "cancelled")
+      .filter((booking) => matchesCustomerIdentity(booking, phone, firstName) && booking.status !== "cancelled")
       .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 
     sendJson(res, 200, { bookings });
@@ -2190,28 +2536,34 @@ async function handleApi(req, res, pathname, searchParams) {
     const input = await readJson(req);
     const digits = phoneDigits(input.phone);
     const firstName = input.firstName || "";
-    const lastName = input.lastName || "";
 
     if (digits.length !== 10) {
       sendJson(res, 400, { error: "Please enter a full 10 digit phone number." });
       return;
     }
 
-    if (!normalizeName(firstName) || !normalizeName(lastName)) {
-      sendJson(res, 400, { error: "Please enter the first and last name used for booking." });
+    if (!normalizeName(firstName)) {
+      sendJson(res, 400, { error: "Please enter the first name used for booking." });
       return;
     }
 
     const bookings = readBookings();
-    const index = bookings.findIndex((booking) => booking.id === id && matchesCustomerIdentity(booking, input.phone, firstName, lastName));
+    const index = bookings.findIndex((booking) => booking.id === id && matchesCustomerIdentity(booking, input.phone, firstName));
 
     if (index === -1 || bookings[index].status === "cancelled") {
       sendJson(res, 404, { error: "No active appointment found for that name and phone number." });
       return;
     }
 
-    const cancellationNotifications = await notifyCancellation(bookings[index], "customer").catch((error) => [
-      { channel: "notification", ok: false, reason: error.message }
+    const [cancellationNotifications, staffCancellationNotification] = await Promise.all([
+      notifyCancellation(bookings[index], "customer").catch((error) => [
+        { channel: "notification", ok: false, reason: error.message }
+      ]),
+      notifyStaffCancellation(bookings[index], "the customer").catch((error) => ({
+        channel: "staff_cancellation_sms",
+        ok: false,
+        reason: error.message
+      }))
     ]);
 
     bookings[index] = {
@@ -2219,7 +2571,8 @@ async function handleApi(req, res, pathname, searchParams) {
       status: "cancelled",
       cancelledAt: new Date().toISOString(),
       cancelledBy: "customer",
-      cancellationNotifications
+      cancellationNotifications,
+      staffCancellationNotifications: [staffCancellationNotification]
     };
     writeBookings(bookings);
     sendJson(res, 200, { booking: bookings[index] });
@@ -2261,8 +2614,15 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
-    const cancellationNotifications = await notifyCancellation(bookings[index], "salon staff").catch((error) => [
-      { channel: "notification", ok: false, reason: error.message }
+    const [cancellationNotifications, staffCancellationNotification] = await Promise.all([
+      notifyCancellation(bookings[index], "salon staff").catch((error) => [
+        { channel: "notification", ok: false, reason: error.message }
+      ]),
+      notifyStaffCancellation(bookings[index], "salon staff").catch((error) => ({
+        channel: "staff_cancellation_sms",
+        ok: false,
+        reason: error.message
+      }))
     ]);
 
     bookings[index] = {
@@ -2270,7 +2630,8 @@ async function handleApi(req, res, pathname, searchParams) {
       status: "cancelled",
       cancelledAt: new Date().toISOString(),
       cancelledBy: "staff",
-      cancellationNotifications
+      cancellationNotifications,
+      staffCancellationNotifications: [staffCancellationNotification]
     };
     writeBookings(bookings);
     sendJson(res, 200, { booking: bookings[index] });
@@ -2292,14 +2653,19 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
+    const previousBooking = { ...bookings[index] };
     const nextBooking = { ...bookings[index], ...input };
-    const service = canonicalServiceName(nextBooking.service);
+    const requestedServices = Array.isArray(input.services)
+      ? input.services
+      : (nextBooking.services?.length ? nextBooking.services : [nextBooking.service]);
+    const selectedServices = canonicalServiceNames({ services: requestedServices });
+    const service = serviceLabel(selectedServices);
     const staffId = nextBooking.staffId;
     const staffName = bookableStaff.find((person) => person.id === staffId)?.name;
-    const durationMinutes = durationForService(service);
+    const durationMinutes = durationForServices(selectedServices);
 
-    if (!service || !serviceDurations[service]) {
-      sendJson(res, 400, { error: "Please choose a valid service." });
+    if (!selectedServices.length || selectedServices.length !== requestedServices.length) {
+      sendJson(res, 400, { error: "Please choose one or more valid services without duplicates." });
       return;
     }
 
@@ -2308,9 +2674,17 @@ async function handleApi(req, res, pathname, searchParams) {
       return;
     }
 
+    const closureReason = salonClosure(readSchedule(), nextBooking.date);
+    if (closureReason) {
+      sendJson(res, 400, {
+        error: `The salon is closed on ${displayDate(nextBooking.date)}: ${closureReason}.`
+      });
+      return;
+    }
+
     if (!appointmentFitsSalonHours(nextBooking.date, nextBooking.time, durationMinutes)) {
       sendJson(res, 400, {
-        error: `That service must finish by the salon closing time of ${displayTime(getHours(nextBooking.date).close)}.`
+        error: `The selected services must finish by the salon closing time of ${displayTime(getHours(nextBooking.date).close)}.`
       });
       return;
     }
@@ -2327,11 +2701,17 @@ async function handleApi(req, res, pathname, searchParams) {
 
     bookings[index] = {
       ...nextBooking,
+      services: selectedServices,
       service,
       staffName,
       durationMinutes,
       updatedAt: new Date().toISOString()
     };
+    bookings[index].staffUpdateNotifications = await notifyStaffBookingUpdate(previousBooking, bookings[index]).catch((error) => [{
+      channel: "staff_update_sms",
+      ok: false,
+      reason: error.message
+    }]);
     const customer = upsertCustomer(bookings[index]);
     bookings[index].customerId = customer?.id || bookings[index].customerId || "";
     writeBookings(bookings);
@@ -2343,7 +2723,13 @@ async function handleApi(req, res, pathname, searchParams) {
 }
 
 function serveStatic(res, pathname) {
-  const requestedPath = pathname === "/" ? "/index.html" : pathname;
+  const cleanPageRoutes = {
+    "/": "/index.html",
+    "/booking": "/booking.html",
+    "/staff": "/staff.html",
+    "/checkin": "/checkin.html"
+  };
+  const requestedPath = cleanPageRoutes[pathname] || pathname;
   const filePath = path.normalize(path.join(PUBLIC_DIR, requestedPath));
 
   if (!filePath.startsWith(PUBLIC_DIR) || filePath.includes(`${path.sep}data${path.sep}`) || path.basename(filePath).startsWith(".")) {
@@ -2368,6 +2754,22 @@ function serveStatic(res, pathname) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  const legacyPageRoutes = {
+    "/index": "/",
+    "/index.html": "/",
+    "/booking.html": "/booking",
+    "/booking/": "/booking",
+    "/staff.html": "/staff",
+    "/staff/": "/staff",
+    "/checkin.html": "/checkin",
+    "/checkin/": "/checkin"
+  };
+
+  if (legacyPageRoutes[url.pathname]) {
+    res.writeHead(308, { Location: `${legacyPageRoutes[url.pathname]}${url.search}${url.hash}` });
+    res.end();
+    return;
+  }
 
   if (url.pathname.startsWith("/api/")) {
     handleApi(req, res, url.pathname, url.searchParams).catch((error) => {
@@ -2382,5 +2784,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   ensureStore();
   syncCustomersFromBookings();
+  consolidateCustomerDatabase();
+  normalizeStoredCustomerBirthdays();
   console.log(`Dior Nails booking system running at http://localhost:${PORT}`);
 });

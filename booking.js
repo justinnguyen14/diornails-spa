@@ -1,5 +1,8 @@
 const form = document.querySelector("#appointment-form");
 const serviceInput = document.querySelector("#service-input");
+const primaryServiceInput = document.querySelector("#primary-service");
+const selectedServicesList = document.querySelector("#selected-services");
+const addServiceButton = document.querySelector("#add-service-button");
 const staffInput = document.querySelector("#staff-input");
 const staffIdInput = document.querySelector("#staff-id");
 const serviceOptions = document.querySelector("#service-options");
@@ -20,7 +23,6 @@ const emailInput = form?.elements.email;
 const phoneInput = form?.elements.phone;
 const manageForm = document.querySelector("#manage-booking-form");
 const manageFirstNameInput = manageForm?.elements.lookupFirstName;
-const manageLastNameInput = manageForm?.elements.lookupLastName;
 const managePhoneInput = manageForm?.elements.lookupPhone;
 const manageResults = document.querySelector("#manage-results");
 const manageStatus = document.querySelector("#manage-status");
@@ -160,6 +162,7 @@ let config = {
 let serviceMenuOpen = false;
 let staffMenuOpen = false;
 let pendingCancel = null;
+let selectedServices = [];
 
 function todayIso() {
   const now = new Date();
@@ -218,13 +221,43 @@ function normalizeServiceName(value) {
 }
 
 function selectedServiceName() {
-  const normalized = normalizeServiceName(serviceInput.value);
-  return config.services.find((service) => normalizeServiceName(service) === normalized) || "";
+  return selectedServices[0] || "";
 }
 
 function selectedServiceDuration() {
-  const service = selectedServiceName();
-  return service ? config.serviceDurations?.[service] || 60 : 0;
+  return selectedServices.reduce(
+    (total, service) => total + Number(config.serviceDurations?.[service] || 60),
+    0
+  );
+}
+
+function renderSelectedServices() {
+  primaryServiceInput.value = selectedServiceName();
+  selectedServicesList.innerHTML = selectedServices.map((service) => `
+    <div class="selected-service-item">
+      <span>${escapeHtml(service)} <small>${Number(config.serviceDurations?.[service] || 60)} min</small></span>
+      <button
+        class="selected-service-remove"
+        type="button"
+        data-remove-service="${escapeHtml(service)}"
+        aria-label="Remove ${escapeHtml(service)}"
+        title="Remove service"
+      >&times;</button>
+    </div>
+  `).join("");
+  addServiceButton.hidden = selectedServices.length === 0;
+  serviceInput.placeholder = selectedServices.length
+    ? "Choose or search another service"
+    : "Choose or search service";
+}
+
+function addSelectedService(service) {
+  if (!service || selectedServices.includes(service)) {
+    return;
+  }
+  selectedServices.push(service);
+  serviceInput.value = "";
+  renderSelectedServices();
 }
 
 function getDisplayHours(dateString) {
@@ -265,8 +298,8 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-function openCancelModal(booking, phone, firstName, lastName, card) {
-  pendingCancel = { booking, phone, firstName, lastName, card };
+function openCancelModal(booking, phone, firstName, card) {
+  pendingCancel = { booking, phone, firstName, card };
   cancelModalCopy.textContent = `Are you sure you want to cancel ${booking.service} on ${displayDate(booking.date)} from ${bookingTimeRange(booking)}?`;
   cancelModal.classList.remove("is-hidden");
   confirmCancelButton.focus();
@@ -317,7 +350,10 @@ function renderServiceOptions(filter = "") {
   const groups = sourceGroups
     .map((group) => ({
       ...group,
-      services: group.services.filter((service) => service.toLowerCase().includes(normalizedFilter))
+      services: group.services.filter((service) => (
+        !selectedServices.includes(service) &&
+        service.toLowerCase().includes(normalizedFilter)
+      ))
     }))
     .filter((group) => group.services.length);
 
@@ -384,6 +420,8 @@ async function loadConfig() {
 
   renderServiceOptions();
   renderStaffOptions();
+  selectedServices = [];
+  renderSelectedServices();
   serviceInput.value = "";
   staffInput.value = "Any available tech";
   syncStaffId();
@@ -396,7 +434,7 @@ async function loadConfig() {
 async function loadAvailability() {
   const date = dateInput.value;
   const staffId = syncStaffId();
-  const service = selectedServiceName();
+  const services = [...selectedServices];
   const durationMinutes = selectedServiceDuration();
 
   selectedTime.value = "";
@@ -404,7 +442,7 @@ async function loadAvailability() {
   slotHelper.textContent = "Checking available times...";
   timeSlots.innerHTML = '<p class="slot-empty">Loading times...</p>';
 
-  if (!service) {
+  if (!services.length) {
     timeSlots.innerHTML = '<p class="slot-empty">Choose a service to see appointment times.</p>';
     slotHelper.textContent = "Pick a service first so we can reserve the correct amount of time.";
     return;
@@ -421,9 +459,17 @@ async function loadAvailability() {
     return;
   }
 
-  const response = await fetch(`/api/availability?date=${encodeURIComponent(date)}&staffId=${encodeURIComponent(staffId)}&service=${encodeURIComponent(service)}`);
+  const availabilityParams = new URLSearchParams({ date, staffId });
+  services.forEach((service) => availabilityParams.append("service", service));
+  const response = await fetch(`/api/availability?${availabilityParams.toString()}`);
   const data = await response.json();
   const availableSlots = data.slots || [];
+
+  if (data.closed) {
+    timeSlots.innerHTML = `<p class="slot-empty">The salon is closed on this date${data.closureReason ? `: ${escapeHtml(data.closureReason)}` : ""}.</p>`;
+    slotHelper.textContent = "Please choose another date.";
+    return;
+  }
 
   if (availableSlots.length === 0) {
     timeSlots.innerHTML = '<p class="slot-empty">No salon hours found for this day.</p>';
@@ -448,7 +494,9 @@ async function loadAvailability() {
 function updateSummary() {
   syncStaffId();
   const selectedStaff = config.staff.find((person) => person.id === staffIdInput.value);
-  summaryService.textContent = serviceInput.value || "Choose a service";
+  summaryService.textContent = selectedServices.length
+    ? `${selectedServices.join(" + ")} (${selectedServiceDuration()} min)`
+    : "Choose a service";
   summaryStaff.textContent = selectedStaff?.name || "Any available tech";
   summaryDate.textContent = dateInput.value ? displayDate(dateInput.value) : "Choose a date";
   summaryTime.textContent = selectedTime.value ? displayTime(selectedTime.value) : "Choose a time";
@@ -531,14 +579,33 @@ serviceOptions?.addEventListener("click", async (event) => {
     return;
   }
 
-  serviceInput.value = option.dataset.service;
+  addSelectedService(option.dataset.service);
   setServiceMenuOpen(false);
   updateSummary();
   await loadAvailability();
 });
 
+addServiceButton?.addEventListener("click", () => {
+  serviceInput.value = "";
+  renderServiceOptions("");
+  setServiceMenuOpen(true);
+  serviceInput.focus();
+});
+
+selectedServicesList?.addEventListener("click", async (event) => {
+  const removeButton = event.target.closest("[data-remove-service]");
+  if (!removeButton) {
+    return;
+  }
+  selectedServices = selectedServices.filter((service) => service !== removeButton.dataset.removeService);
+  renderSelectedServices();
+  renderServiceOptions("");
+  updateSummary();
+  await loadAvailability();
+});
+
 document.addEventListener("click", (event) => {
-  if (serviceMenuOpen && !event.target.closest("#service-search")) {
+  if (serviceMenuOpen && !event.target.closest("#service-search, #add-service-button, #selected-services")) {
     setServiceMenuOpen(false);
   }
 
@@ -588,6 +655,12 @@ form?.addEventListener("submit", async (event) => {
   event.preventDefault();
   setStatus("");
 
+  if (!selectedServices.length) {
+    setStatus("Please choose at least one service.", "error");
+    serviceInput.focus();
+    return;
+  }
+
   if (!validateContactFields()) {
     return;
   }
@@ -608,6 +681,8 @@ form?.addEventListener("submit", async (event) => {
   data.lastName = normalizeName(data.lastName);
   data.customerName = `${data.firstName} ${data.lastName}`.trim();
   data.phone = phoneDigits(data.phone);
+  data.services = [...selectedServices];
+  data.service = selectedServiceName();
   const submitButton = form.querySelector("button[type='submit']");
   submitButton.disabled = true;
   submitButton.textContent = "Booking...";
@@ -647,7 +722,7 @@ form?.addEventListener("submit", async (event) => {
   }
 });
 
-function renderManageResults(bookings, phone, firstName, lastName) {
+function renderManageResults(bookings, phone, firstName) {
   if (!bookings.length) {
     manageResults.innerHTML = '<p class="slot-empty">No active appointments found for that name and phone number.</p>';
     return;
@@ -667,7 +742,6 @@ function renderManageResults(bookings, phone, firstName, lastName) {
         data-cancel-booking="${escapeHtml(booking.id)}"
         data-phone="${escapeHtml(phone)}"
         data-first-name="${escapeHtml(firstName)}"
-        data-last-name="${escapeHtml(lastName)}"
       >
         Cancel Appointment
       </button>
@@ -682,7 +756,6 @@ manageForm?.addEventListener("submit", async (event) => {
 
   const phone = phoneDigits(managePhoneInput.value);
   const firstName = normalizeName(manageFirstNameInput.value);
-  const lastName = normalizeName(manageLastNameInput.value);
   managePhoneInput.setCustomValidity(phone.length === 10 ? "" : "Enter a full 10 digit phone number.");
 
   if (!manageForm.reportValidity()) {
@@ -690,7 +763,7 @@ manageForm?.addEventListener("submit", async (event) => {
   }
 
   try {
-    const lookupParams = new URLSearchParams({ phone, firstName, lastName });
+    const lookupParams = new URLSearchParams({ phone, firstName });
     const response = await fetch(`/api/customer-bookings?${lookupParams.toString()}`);
     const result = await response.json();
 
@@ -698,7 +771,7 @@ manageForm?.addEventListener("submit", async (event) => {
       throw new Error(result.error || "Unable to look up appointments.");
     }
 
-    renderManageResults(result.bookings || [], phone, firstName, lastName);
+    renderManageResults(result.bookings || [], phone, firstName);
   } catch (error) {
     manageResults.innerHTML = "";
     setManageStatus(error.message, "error");
@@ -721,7 +794,7 @@ manageResults?.addEventListener("click", async (event) => {
     time: card?.dataset.bookingTime || ""
   };
 
-  openCancelModal(booking, button.dataset.phone, button.dataset.firstName, button.dataset.lastName, card);
+  openCancelModal(booking, button.dataset.phone, button.dataset.firstName, card);
 });
 
 keepAppointmentButton?.addEventListener("click", closeCancelModal);
@@ -743,7 +816,7 @@ confirmCancelButton?.addEventListener("click", async () => {
     return;
   }
 
-  const { booking, phone, firstName, lastName, card } = pendingCancel;
+  const { booking, phone, firstName, card } = pendingCancel;
   confirmCancelButton.disabled = true;
   confirmCancelButton.textContent = "Cancelling...";
 
@@ -751,7 +824,7 @@ confirmCancelButton?.addEventListener("click", async () => {
     const response = await fetch(`/api/customer-bookings/${booking.id}/cancel`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, firstName, lastName })
+      body: JSON.stringify({ phone, firstName })
     });
     const result = await response.json();
 

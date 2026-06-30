@@ -28,5 +28,15 @@
     "pointsAwarded": 1,
     "source": "new-profile",
     "createdAt": "2026-06-26T04:43:29.067Z"
+  },
+  {
+    "id": "chk_1782771667757_bda66440c57ff",
+    "customerId": "cus_1782358856669_21a73ebf276b18",
+    "customerName": "Justin Nguyen",
+    "phone": "(973) 906-3071",
+    "date": "2026-06-29",
+    "pointsAwarded": 1,
+    "source": "sms-skipped",
+    "createdAt": "2026-06-29T22:21:07.757Z"
   }
 ]

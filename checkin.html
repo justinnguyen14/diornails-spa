@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Customer Check In | Dior Nails & Spa</title>
     <meta name="description" content="Dior Nails & Spa customer check-in kiosk." />
-    <link rel="stylesheet" href="styles.css?v=62" />
+    <link rel="stylesheet" href="styles.css?v=68" />
   </head>
   <body class="app-page checkin-page">
     <header class="site-header checkin-header" aria-label="Check-in navigation">
-      <a class="brand" href="index.html" aria-label="Dior Nails home">
+      <a class="brand" href="/" aria-label="Dior Nails home">
         <span>Dior</span><strong>Nails</strong>
       </a>
-      <a class="button button-small" href="booking.html">Book Appointment</a>
+      <a class="button button-small" href="/booking">Book Appointment</a>
     </header>
 
     <main class="checkin-shell">
@@ -56,8 +56,8 @@
 
         <form class="checkin-profile-form is-hidden" id="checkin-profile-form">
           <div class="checkin-form-heading">
-            <h2>Create your profile</h2>
-            <p>This saves your information for faster appointments and future text updates.</p>
+            <h2 id="checkin-profile-title">Create your profile</h2>
+            <p id="checkin-profile-copy">This saves your information for faster appointments and future text updates.</p>
           </div>
           <div class="form-grid">
             <label>
@@ -97,14 +97,11 @@
                   <span>Day</span>
                   <input data-birthday-day type="number" inputmode="numeric" min="1" max="31" placeholder="DD" />
                 </label>
-                <label>
-                  <span>Year</span>
-                  <input data-birthday-year type="number" inputmode="numeric" min="1900" placeholder="YYYY" />
-                </label>
               </div>
               <input name="birthday" type="hidden" />
             </div>
           </div>
+          <input name="customerId" type="hidden" />
           <input name="phone" type="hidden" />
           <label class="sms-consent">
             <input name="profileConsent" type="checkbox" value="true" required />
@@ -119,7 +116,7 @@
             </span>
           </label>
           <div class="checkin-actions">
-            <button class="button" type="submit">Create Profile & Check In</button>
+            <button class="button" type="submit" id="checkin-profile-submit">Save Profile & Check In</button>
             <button class="button button-secondary" type="button" id="checkin-start-over">Use A Different Number</button>
           </div>
         </form>
@@ -156,10 +153,6 @@
                 <span>Day</span>
                 <input data-birthday-day type="number" inputmode="numeric" min="1" max="31" placeholder="DD" />
               </label>
-              <label>
-                <span>Year</span>
-                <input data-birthday-year type="number" inputmode="numeric" min="1900" placeholder="YYYY" />
-              </label>
             </div>
             <input name="birthday" type="hidden" />
           </div>
@@ -168,6 +161,21 @@
             <button class="button button-secondary" type="button" id="checkin-skip-birthday">Skip For Now</button>
           </div>
         </form>
+
+        <section class="checkin-sms-prompt is-hidden" id="checkin-sms-prompt" role="dialog" aria-modal="true" aria-labelledby="checkin-sms-title">
+          <div class="checkin-sms-icon" aria-hidden="true">SMS</div>
+          <div class="checkin-form-heading">
+            <h2 id="checkin-sms-title">Receive text notifications?</h2>
+            <p>Get appointment confirmations, reminders, check-in updates, holiday closure notices, birthday-week gifts, and salon offers.</p>
+          </div>
+          <p class="checkin-sms-legal">
+            By enabling texts, you agree to receive messages from Dior Nails &amp; Spa at the number entered. Message and data rates may apply. Message frequency varies. Reply STOP to opt out.
+          </p>
+          <div class="checkin-actions">
+            <button class="button" type="button" id="checkin-enable-sms">Enable Text Notifications</button>
+            <button class="button button-secondary" type="button" id="checkin-skip-sms">Not At This Time</button>
+          </div>
+        </section>
 
         <section class="checkin-result is-hidden" id="checkin-result" aria-live="polite"></section>
         <p class="form-status" id="checkin-status" role="status"></p>
@@ -179,6 +187,6 @@
       <p>Check-in and booking system developed by RCI Development.</p>
     </footer>
 
-    <script src="checkin.js?v=7"></script>
+    <script src="checkin.js?v=10"></script>
   </body>
 </html>

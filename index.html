@@ -8,7 +8,7 @@
       name="description"
       content="Dior Nails & Spa offers luxury manicures, pedicures, nail art, and spa services with effortless appointment booking."
     />
-    <link rel="stylesheet" href="styles.css?v=62" />
+    <link rel="stylesheet" href="styles.css?v=68" />
   </head>
   <body>
     <header class="site-header" aria-label="Primary navigation">
@@ -25,10 +25,26 @@
         <a href="#about">About</a>
         <a href="#contact">Contact</a>
       </nav>
-      <a class="button button-small" href="booking.html">
+      <a class="button button-small" href="/booking">
         Book Appointment
       </a>
     </header>
+
+    <div class="cancel-modal site-beta-notice is-hidden" id="site-beta-notice" role="dialog" aria-modal="true" aria-labelledby="site-beta-title">
+      <div class="cancel-modal-card site-beta-notice-card">
+        <button class="detail-close-button" id="close-beta-notice" type="button" aria-label="Close website update notice" title="Close">&times;</button>
+        <span>Website update</span>
+        <h2 id="site-beta-title">Welcome to our new website</h2>
+        <p>
+          Our website is currently in beta while we finish bringing appointments from our previous booking
+          system into the new one and finalize our website and social media pages.
+        </p>
+        <p>
+          Thank you for your patience as we complete these updates. We apologize for any inconvenience.
+        </p>
+        <button class="button" id="continue-beta-notice" type="button">Continue to Website</button>
+      </div>
+    </div>
 
     <main id="top">
       <section class="hero" aria-labelledby="hero-title">
@@ -40,7 +56,7 @@
             Luxury manicures, pedicures, nail art and spa services crafted for your moment to shine.
           </p>
           <div class="hero-actions">
-            <a class="button" href="booking.html">
+            <a class="button" href="/booking">
               Book Appointment
             </a>
             <a class="button button-secondary" href="tel:+18622583070">Call (862) 258-3070</a>
@@ -154,7 +170,7 @@
       <section class="gallery" id="gallery" aria-labelledby="gallery-title">
         <div class="section-heading">
           <h2 id="gallery-title">Featured Styles</h2>
-          <a href="booking.html">Reserve your chair</a>
+          <a href="/booking">Reserve your chair</a>
         </div>
         <div class="style-strip" aria-label="Featured nail style gallery">
           <figure class="style style-1">
@@ -215,13 +231,13 @@
           <div class="booking-panel-copy">
             <p>Choose your service and appointment time through our live online booking page.</p>
             <div class="booking-actions">
-              <a class="button" href="booking.html">
+              <a class="button" href="/booking">
                 Book Online
               </a>
               <a class="button button-secondary" href="tel:+18622583070">Call (862) 258-3070</a>
             </div>
           </div>
-          <a class="site-qr-card" href="booking.html" aria-label="Scan or tap to book an appointment online">
+          <a class="site-qr-card" href="/booking" aria-label="Scan or tap to book an appointment online">
             <img src="assets/dior-nails-website-qr.png" alt="QR code for Dior Nails & Spa website" />
             <span>Scan to book</span>
           </a>
@@ -261,6 +277,6 @@
       <p class="copyright">&copy; 2026 Dior Nails &amp; Spa. All rights reserved. Website developed by RCI Development.</p>
     </footer>
 
-    <script src="script.js?v=4"></script>
+    <script src="script.js?v=5"></script>
   </body>
 </html>

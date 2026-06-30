@@ -1,12 +1,16 @@
 const phoneForm = document.querySelector("#checkin-phone-form");
 const profileForm = document.querySelector("#checkin-profile-form");
 const birthdayForm = document.querySelector("#checkin-birthday-form");
+const smsPrompt = document.querySelector("#checkin-sms-prompt");
 const resultPanel = document.querySelector("#checkin-result");
 const statusLine = document.querySelector("#checkin-status");
 const startOverButton = document.querySelector("#checkin-start-over");
 const skipBirthdayButton = document.querySelector("#checkin-skip-birthday");
 const phoneInput = phoneForm?.querySelector("input[name='phone']");
 const dialPad = document.querySelector(".phone-dial-pad");
+const enableSmsButton = document.querySelector("#checkin-enable-sms");
+const skipSmsButton = document.querySelector("#checkin-skip-sms");
+let pendingSmsCustomer = null;
 
 function phoneDigits(value) {
   return String(value || "").replace(/\D/g, "").slice(0, 10);
@@ -39,33 +43,26 @@ function displayTime(value) {
 function birthdayFromFields(form, { required = false } = {}) {
   const month = form.querySelector("[data-birthday-month]")?.value || "";
   const day = form.querySelector("[data-birthday-day]")?.value || "";
-  const year = form.querySelector("[data-birthday-year]")?.value || "";
-  const hasAnyValue = Boolean(month || day || year);
+  const hasAnyValue = Boolean(month || day);
 
   if (!hasAnyValue && !required) return { value: "", valid: true };
-  if (!month || !day || !year) {
+  if (!month || !day) {
     return { value: "", valid: false, message: required ? "Please add your birthday or choose skip for now." : "Enter a complete birthday or leave it blank." };
   }
 
   const numericDay = Number(day);
-  const numericYear = Number(year);
   const numericMonth = Number(month);
-  const currentYear = new Date().getFullYear();
-  const date = new Date(numericYear, numericMonth - 1, numericDay);
+  const date = new Date(2000, numericMonth - 1, numericDay);
   const valid = Number.isInteger(numericDay)
-    && Number.isInteger(numericYear)
-    && numericYear >= 1900
-    && numericYear <= currentYear
-    && date.getFullYear() === numericYear
     && date.getMonth() === numericMonth - 1
     && date.getDate() === numericDay;
 
   if (!valid) {
-    return { value: "", valid: false, message: "Please enter a real birthday with month, day, and 4 digit year." };
+    return { value: "", valid: false, message: "Please enter a real birthday with month and day." };
   }
 
   return {
-    value: `${numericYear}-${String(numericMonth).padStart(2, "0")}-${String(numericDay).padStart(2, "0")}`,
+    value: `${String(numericMonth).padStart(2, "0")}-${String(numericDay).padStart(2, "0")}`,
     valid: true
   };
 }
@@ -93,6 +90,23 @@ function setLoading(form, isLoading, label) {
   if (!button) return;
   button.disabled = isLoading;
   button.textContent = isLoading ? "Checking..." : label;
+}
+
+function scrollToCheckinStep(element) {
+  window.requestAnimationFrame(() => {
+    element?.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+  });
+}
+
+function fillBirthdayFields(form, birthday) {
+  const parts = String(birthday || "").split("-");
+  const month = parts.length === 3 ? parts[1] : parts[0] || "";
+  const day = parts.length === 3 ? parts[2] : parts[1] || "";
+  const monthInput = form.querySelector("[data-birthday-month]");
+  const dayInput = form.querySelector("[data-birthday-day]");
+  if (monthInput) monthInput.value = month;
+  if (dayInput) dayInput.value = day;
+  if (form.elements.birthday) form.elements.birthday.value = month && day ? `${month}-${day}` : "";
 }
 
 function setPhoneDigits(digits) {
@@ -131,10 +145,12 @@ function showResult(data) {
     : data.message || `Welcome back, ${escapeMarkup(customer.firstName || "friend")}!`;
 
   window.scrollTo({ top: 0, left: 0 });
+  document.body.classList.remove("is-profile-active", "is-sms-prompt-active");
   document.body.classList.add("is-checkin-complete");
   phoneForm.classList.add("is-hidden");
   profileForm.classList.add("is-hidden");
   birthdayForm.classList.add("is-hidden");
+  smsPrompt.classList.add("is-hidden");
   resultPanel.classList.remove("is-hidden");
   resultPanel.innerHTML = `
     <div class="checkin-success-mark" aria-hidden="true">OK</div>
@@ -150,17 +166,37 @@ function showResult(data) {
 }
 
 function showProfile(data) {
-  document.body.classList.remove("is-checkin-complete");
+  const customer = data.customer || {};
+  const isExisting = Boolean(data.existingProfile || customer.id);
+  document.body.classList.remove("is-checkin-complete", "is-sms-prompt-active");
+  document.body.classList.add("is-profile-active");
+  phoneForm.classList.add("is-hidden");
   resultPanel.classList.add("is-hidden");
   birthdayForm.classList.add("is-hidden");
+  smsPrompt.classList.add("is-hidden");
+  profileForm.reset();
   profileForm.classList.remove("is-hidden");
   profileForm.elements.phone.value = phoneDigits(data.phone);
-  setStatus(data.message || "Create your profile to finish checking in.");
-  profileForm.querySelector("input[name='firstName']")?.focus();
+  profileForm.elements.customerId.value = customer.id || "";
+  profileForm.elements.firstName.value = customer.firstName || "";
+  profileForm.elements.lastName.value = customer.lastName || "";
+  profileForm.elements.email.value = customer.email || "";
+  profileForm.elements.smsConsent.checked = Boolean(customer.smsConsent);
+  fillBirthdayFields(profileForm, customer.birthday);
+  document.querySelector("#checkin-profile-title").textContent = isExisting ? "Complete your profile" : "Create your profile";
+  document.querySelector("#checkin-profile-copy").textContent = isExisting
+    ? "Review your details and add any missing information. Your phone number securely matched this profile."
+    : "Add your details for faster appointments, check-ins, and visit rewards.";
+  const submitButton = document.querySelector("#checkin-profile-submit");
+  submitButton.textContent = isExisting ? "Save Profile & Check In" : "Create Profile & Check In";
+  submitButton.dataset.defaultLabel = submitButton.textContent;
+  setStatus(data.message || "Complete your profile to finish checking in.");
+  scrollToCheckinStep(profileForm);
+  window.requestAnimationFrame(() => profileForm.querySelector("input[name='firstName']")?.focus({ preventScroll: true }));
 }
 
 function showBirthdayPrompt(data) {
-  document.body.classList.remove("is-checkin-complete");
+  document.body.classList.remove("is-checkin-complete", "is-profile-active", "is-sms-prompt-active");
   phoneForm.classList.add("is-hidden");
   profileForm.classList.add("is-hidden");
   resultPanel.classList.add("is-hidden");
@@ -171,8 +207,25 @@ function showBirthdayPrompt(data) {
   birthdayForm.querySelector("[data-birthday-month]")?.focus();
 }
 
+function showSmsPrompt(data) {
+  pendingSmsCustomer = {
+    customerId: data.customer?.id || "",
+    phone: phoneDigits(data.phone || data.customer?.phone)
+  };
+  document.body.classList.remove("is-checkin-complete", "is-profile-active");
+  document.body.classList.add("is-sms-prompt-active");
+  phoneForm.classList.add("is-hidden");
+  profileForm.classList.add("is-hidden");
+  birthdayForm.classList.add("is-hidden");
+  resultPanel.classList.add("is-hidden");
+  smsPrompt.classList.remove("is-hidden");
+  setStatus(data.message || "Choose whether you would like to receive text notifications.");
+  scrollToCheckinStep(smsPrompt);
+  window.requestAnimationFrame(() => enableSmsButton?.focus({ preventScroll: true }));
+}
+
 function resetCheckin() {
-  document.body.classList.remove("is-checkin-complete");
+  document.body.classList.remove("is-checkin-complete", "is-profile-active", "is-sms-prompt-active");
   phoneForm.reset();
   setPhoneDigits("");
   phoneForm.classList.remove("is-hidden");
@@ -180,8 +233,10 @@ function resetCheckin() {
   profileForm.classList.add("is-hidden");
   birthdayForm.reset();
   birthdayForm.classList.add("is-hidden");
+  smsPrompt.classList.add("is-hidden");
   resultPanel.classList.add("is-hidden");
   resultPanel.innerHTML = "";
+  pendingSmsCustomer = null;
   setStatus("");
 }
 
@@ -225,7 +280,9 @@ phoneForm?.addEventListener("submit", async (event) => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Unable to check in.");
 
-    if (data.needsBirthday) {
+    if (data.needsSmsConsent) {
+      showSmsPrompt(data);
+    } else if (data.needsBirthday) {
       showBirthdayPrompt(data);
     } else if (data.needsProfile) {
       showProfile(data);
@@ -304,7 +361,8 @@ profileForm?.addEventListener("submit", async (event) => {
     return;
   }
 
-  setLoading(profileForm, true, "Create Profile & Check In");
+  const defaultLabel = profileForm.querySelector("button[type='submit']")?.dataset.defaultLabel || "Save Profile & Check In";
+  setLoading(profileForm, true, defaultLabel);
   try {
     const response = await fetch("/api/checkins/profile", {
       method: "POST",
@@ -313,15 +371,53 @@ profileForm?.addEventListener("submit", async (event) => {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Unable to save profile.");
+    if (result.needsSmsConsent) {
+      showSmsPrompt(result);
+    } else {
+      showResult(result);
+    }
+    setStatus("");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setLoading(profileForm, false, defaultLabel);
+  }
+});
+
+async function submitSmsChoice(enableSms) {
+  if (!pendingSmsCustomer?.customerId || pendingSmsCustomer.phone.length !== 10) {
+    setStatus("Unable to verify this customer profile. Please start again.", "error");
+    return;
+  }
+
+  const button = enableSms ? enableSmsButton : skipSmsButton;
+  button.disabled = true;
+  const defaultLabel = enableSms ? "Enable Text Notifications" : "Not At This Time";
+  button.textContent = enableSms ? "Enabling..." : "Checking In...";
+
+  try {
+    const response = await fetch("/api/checkins/sms-consent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...pendingSmsCustomer,
+        enableSms
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Unable to finish check-in.");
     showResult(result);
     setStatus("");
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
-    setLoading(profileForm, false, "Create Profile & Check In");
+    button.disabled = false;
+    button.textContent = defaultLabel;
   }
-});
+}
 
+enableSmsButton?.addEventListener("click", () => submitSmsChoice(true));
+skipSmsButton?.addEventListener("click", () => submitSmsChoice(false));
 startOverButton?.addEventListener("click", resetCheckin);
 
 document.addEventListener("click", () => {
